@@ -60,6 +60,7 @@ class ConnectionApplication(BaseModel):
             "in_manager": "Manager Assigned",
             "in_junior_manager": "Junior Manager Assigned",
             "in_controller": "Controller Assigned",
+            "between_controller_technician": "Between Controller and Technician role",
             "in_technician": "Technician Assigned",
             "in_technician_work": "Technician Working",
             "completed": "Completed",
@@ -80,6 +81,7 @@ class TechnicianApplication(BaseModel):
     status: Dict[str, str] = field(
         default_factory=lambda: {
             "in_controller": "Controller Assigned",
+            "between_controller_technician": "Between Controller and Technician role",
             "in_technician": "Technician Assigned",
             "in_technician_work": "Technician Working",
             "completed": "Completed",
@@ -128,5 +130,20 @@ class Connection(BaseModel):
     saff_id: Optional[int] = None
 
 
+@dataclass
+class Materials(BaseModel):
+    id: Optional[int] = None
+    name: Optional[str] = None
+    price: Optional[float] = None
+    description: Optional[str] = None
+    quantity: Optional[int] = None
+    serial_number: Optional[str] = None
 
 
+@dataclass
+class MaterialRequests(BaseModel):
+    id: Optional[int] = None
+    description: Optional[str] = None
+    user_id: Optional[int] = None
+    applications_id: Optional[int] = None
+    material_id: Optional[int] = None
