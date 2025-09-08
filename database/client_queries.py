@@ -37,11 +37,11 @@ async def create_service_order(user_id: int, region: str, abonent_id: str, addre
     try:
         row = await conn.fetchrow(
             """
-            INSERT INTO technician_orders (user_id, region_id, abonent_id, address, media, longitude, latitude, description)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            INSERT INTO technician_orders (user_id, region_id, abonent_id, address, media, longitude, latitude, description, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING id
             """,
-            user_id, None, abonent_id, address, media, longitude, latitude, description
+            user_id, None, abonent_id, address, media, longitude, latitude, description, 'in_controller'
         )
         return row["id"]
     finally:
@@ -93,11 +93,11 @@ async def create_connection_order(user_id: int, region: str, address: str, tarif
     try:
         row = await conn.fetchrow(
             """
-            INSERT INTO connection_orders (user_id, region, address, tarif_id, latitude, longitude)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO connection_orders (user_id, region, address, tarif_id, latitude, longitude, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING id
             """,
-            user_id, region, address, tarif_id, latitude, longitude
+            user_id, region, address, tarif_id, latitude, longitude, 'in_manager'
         )
         return row["id"]
     finally:

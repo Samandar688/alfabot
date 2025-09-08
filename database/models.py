@@ -57,14 +57,10 @@ class ConnectionApplication(BaseModel):
     is_active: bool = True
     status: Dict[str, str] = field(
         default_factory=lambda: {
-            "new": "New",
             "in_manager": "Manager Assigned",
             "in_junior_manager": "Junior Manager Assigned",
             "in_controller": "Controller Assigned",
             "in_technician": "Technician Assigned",
-            "in_diagnostics": "In Diagnostics",
-            "in_repairs": "In Repairs",
-            "in_warehouse": "Warehouse Assigned",
             "in_technician_work": "Technician Working",
             "completed": "Completed",
         }
@@ -83,12 +79,8 @@ class TechnicianApplication(BaseModel):
     description: Optional[str] = None
     status: Dict[str, str] = field(
         default_factory=lambda: {
-            "new": "New",
             "in_controller": "Controller Assigned",
             "in_technician": "Technician Assigned",
-            "in_diagnostics": "In Diagnostics",
-            "in_repairs": "In Repairs",
-            "in_warehouse": "Warehouse Assigned",
             "in_technician_work": "Technician Working",
             "completed": "Completed",
         }
@@ -109,14 +101,10 @@ class SaffApplication(BaseModel):
     description: Optional[str] = None
     status: Dict[str, str] = field(
         default_factory=lambda: {
-            "new": "New",
             "in_manager": "Manager Assigned",
             "in_junior_manager": "Junior Manager Assigned",
             "in_controller": "Controller Assigned",
             "in_technician": "Technician Assigned",
-            "in_diagnostics": "In Diagnostics",
-            "in_repairs": "In Repairs",
-            "in_warehouse": "Warehouse Assigned",
             "in_technician_work": "Technician Working",
             "completed": "Completed",
         }
