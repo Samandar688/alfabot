@@ -133,3 +133,20 @@ def get_client_regions_keyboard(lang: str = 'uz') -> InlineKeyboardMarkup:
         ]
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+def get_contact_options_keyboard(lang: str = "uz"):
+
+    call_text = "📞 Qo'ng'iroq qilish" if lang == "uz" else "📞 Позвонить"
+    chat_text = "💬 Onlayn chat" if lang == "uz" else "💬 Онлайн-чат"
+    back_text = "◀️ Orqaga" if lang == "uz" else "◀️ Назад"
+    
+    reply_keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=call_text)],
+            [KeyboardButton(text=chat_text, web_app=WebAppInfo(url="https://webapp-gamma-three.vercel.app/"))],
+            [KeyboardButton(text=back_text)],
+        ],
+        resize_keyboard=True,
+    )
+
+    return reply_keyboard

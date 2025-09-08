@@ -140,3 +140,15 @@ async def update_user_full_name(telegram_id: int, full_name: str) -> bool:
         return result != 'UPDATE 0'
     finally:
         await conn.close()
+
+async def get_user_language(telegram_id: int) -> str:
+    """Get user's language by telegram_id; return 'uz' as default."""
+    conn = await asyncpg.connect(settings.DB_URL)
+    try:
+        language = await conn.fetchval(
+            "SELECT language FROM users WHERE telegram_id = $1",
+            telegram_id
+        )
+        return language if language else 'uz'
+    finally:
+        await conn.close()
