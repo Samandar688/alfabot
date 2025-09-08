@@ -27,14 +27,22 @@ async def start_handler(message: Message, state: FSMContext):
     await state.clear()
     user = message.from_user
     
-    role = await get_or_create_user(
-        telegram_id=user.id,
-        username=user.username,
-        full_name=user.full_name  # Save initial full name from Telegram
-    )
+    # Check if user exists in database
+    db_user = await find_user_by_telegram_id(user.id)
+    
+    # If user doesn't exist, create with minimal info
+    if not db_user:
+        role = await get_or_create_user(
+            telegram_id=user.id,
+            username=user.username,
+            full_name=None  # Don't save Telegram full_name initially
+        )
+        db_user = await find_user_by_telegram_id(user.id)
+    else:
+        # Get existing role
+        role = db_user.get("role", "client")
 
     # If user does not have a phone number yet, request contact share
-    db_user = await find_user_by_telegram_id(user.id)
     user_phone = db_user.get("phone") if db_user else None
     if not user_phone:
         await message.answer(
@@ -43,6 +51,7 @@ async def start_handler(message: Message, state: FSMContext):
         )
         return
     
+    # Always check for full_name and ask if not present
     if not db_user.get("full_name"):
         await state.set_state(UserRegistration.waiting_for_full_name)
         await message.answer("Iltimos, to'liq ism-sharifingizni (FISH) kiriting:", reply_markup=None)

@@ -23,6 +23,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Drop existing function if it exists
+DROP FUNCTION IF EXISTS create_user_sequential(BIGINT, TEXT, TEXT, TEXT, user_role);
+
 -- Function to create user with sequential ID
 CREATE OR REPLACE FUNCTION create_user_sequential(
     p_telegram_id BIGINT,
@@ -33,15 +36,22 @@ CREATE OR REPLACE FUNCTION create_user_sequential(
 )
 RETURNS TABLE(
     user_id INTEGER,
-    telegram_id BIGINT,
-    username TEXT,
-    full_name TEXT,
-    phone TEXT,
-    role user_role,
-    created_at TIMESTAMPTZ
+    user_telegram_id BIGINT,
+    user_username TEXT,
+    user_full_name TEXT,
+    user_phone TEXT,
+    user_role user_role,
+    user_created_at TIMESTAMPTZ
 ) AS $$
 DECLARE
     new_user_id INTEGER;
+    ret_user_id INTEGER;
+    ret_telegram_id BIGINT;
+    ret_username TEXT;
+    ret_full_name TEXT;
+    ret_phone TEXT;
+    ret_role user_role;
+    ret_created_at TIMESTAMPTZ;
 BEGIN
     -- Get next sequential ID
     SELECT get_next_sequential_user_id() INTO new_user_id;
@@ -55,7 +65,15 @@ BEGIN
         phone = EXCLUDED.phone,
         updated_at = NOW()
     RETURNING users.id, users.telegram_id, users.username, users.full_name, users.phone, users.role, users.created_at
-    INTO user_id, telegram_id, username, full_name, phone, role, created_at;
+    INTO ret_user_id, ret_telegram_id, ret_username, ret_full_name, ret_phone, ret_role, ret_created_at;
+    
+    create_user_sequential.user_id := ret_user_id;
+    create_user_sequential.user_telegram_id := ret_telegram_id;
+    create_user_sequential.user_username := ret_username;
+    create_user_sequential.user_full_name := ret_full_name;
+    create_user_sequential.user_phone := ret_phone;
+    create_user_sequential.user_role := ret_role;
+    create_user_sequential.user_created_at := ret_created_at;
     
     RETURN NEXT;
 END;
