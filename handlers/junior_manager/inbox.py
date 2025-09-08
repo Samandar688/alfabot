@@ -129,11 +129,19 @@ async def jm_send_to_controller(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
     order_id = int(cb.data.split(":")[1])  # = connection_id (order_id)
 
-    ok = await db_move_order_to_controller(order_id)
+    # JM foydalanuvchi ID sini olamiz
+    jm_user = await db_get_user_by_telegram_id(cb.from_user.id)
+    if not jm_user:
+        return await cb.answer("❌ Foydalanuvchi topilmadi.", show_alert=True)
+
+    # Status + connections yozuvi
+    from database.jm_inbox_queries import db_jm_send_to_controller as _jm_send
+    ok = await _jm_send(order_id=order_id, jm_id=jm_user["id"])  # controller_id ni bermasak, o'zi tanlaydi
+
     if not ok:
         return await cb.answer("❌ Yuborishning iloji yo‘q (status mos emas).", show_alert=True)
 
-    # Ro'yxatdan olib tashlaymiz va sahifani yangilaymiz
+    # Ro'yxatdan olib tashlab, sahifani yangilaymiz
     data  = await state.get_data()
     items = data.get("items", [])
     lang  = data.get("lang", "uz")

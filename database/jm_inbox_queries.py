@@ -169,3 +169,91 @@ async def db_move_order_to_controller(order_id: int) -> bool:
         return bool(row)
     finally:
         await conn.close()
+
+
+async def db_pick_any_controller(conn) -> Optional[int]:
+    """
+    Istalgan aktiv controller ID sini qaytaradi (birinchi topilgan).
+    """
+    row = await conn.fetchrow(
+        """
+        SELECT id
+        FROM users
+        WHERE role = 'controller' AND COALESCE(is_blocked, FALSE) = FALSE
+        ORDER BY id
+        LIMIT 1
+        """
+    )
+    return row["id"] if row else None
+
+
+async def db_jm_send_to_controller(order_id: int, jm_id: int, controller_id: Optional[int] = None) -> bool:
+    """
+    JM arizani controllerga uzatadi:
+      1) connection_orders.status: in_junior_manager -> in_controller
+      2) connections jadvaliga (yoki mavjudini yangilab) yozuv: connecion_id=order_id, sender_id=jm_id, recipient_id=controller_id
+    QAYTADIGAN: True/False (status o'zgargan bo'lsa True)
+    """
+    conn = await asyncpg.connect(settings.DB_URL)
+    try:
+        async with conn.transaction():
+            # 1) Statusni tekshirib/yangilash
+            ok_row = await conn.fetchrow(
+                """
+                UPDATE connection_orders
+                   SET status     = 'in_controller'::connection_order_status,
+                       updated_at = NOW()
+                 WHERE id      = $1
+                   AND status  = 'in_junior_manager'::connection_order_status
+             RETURNING id
+                """,
+                order_id
+            )
+            if not ok_row:
+                return False  # noto'g'ri status bo'lsa, davom ETMAYMIZ
+
+            # 2) Controller tanlash (agar berilmagan bo‘lsa)
+            if controller_id is None:
+                controller_id = await db_pick_any_controller(conn)
+                if controller_id is None:
+                    raise ValueError("Controller topilmadi")
+
+            # 3) connections yozuvi (connecion_id) — upsertga o‘xshash
+            existing = await conn.fetchrow(
+                """
+                SELECT id
+                FROM connections
+                WHERE connecion_id = $1 AND recipient_id = $2
+                LIMIT 1
+                """,
+                order_id, controller_id
+            )
+
+            if existing:
+                await conn.execute(
+                    """
+                    UPDATE connections
+                    SET sender_id  = $1,
+                        updated_at = NOW()
+                    WHERE id = $2
+                    """,
+                    jm_id, existing["id"]
+                )
+            else:
+                await conn.execute(
+                    """
+                    INSERT INTO connections (
+                        connecion_id,  -- e'tibor: ataylab shu nom
+                        sender_id,
+                        recipient_id,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES ($1, $2, $3, NOW(), NOW())
+                    """,
+                    order_id, jm_id, controller_id
+                )
+
+            return True
+    finally:
+        await conn.close()

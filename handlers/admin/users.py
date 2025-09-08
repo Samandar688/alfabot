@@ -4,7 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.state import State, StatesGroup
 from typing import Optional
-
+from filters.role_filter import RoleFilter
 from database.queries import (
     find_user_by_telegram_id,
     find_user_by_phone,
@@ -18,7 +18,7 @@ from keyboards.admin_buttons import (
 )
 
 router = Router()
-
+router.message.filter(RoleFilter("admin")) 
 class UserRoleChange(StatesGroup):
     waiting_for_search_method = State()
     waiting_for_telegram_id = State()

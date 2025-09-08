@@ -24,24 +24,20 @@ def esc(v) -> str:
         return "-"
     return html.escape(str(v), quote=False)
 
-def short_view_text(item: dict) -> str:
+def short_view_text(item: dict, idx: int | None = None, total: int | None = None) -> str:
     full_id = str(item["id"])
     parts = full_id.split("_")
-    short_id = full_id
-    if len(parts) >= 2:
-        short_id = f"{parts[0]}-{parts[1]}"
+    short_id = full_id if len(parts) < 2 else f"{parts[0]}-{parts[1]}"
 
     created = item["created_at"]
     created_dt = datetime.fromisoformat(created) if isinstance(created, str) else created
-
-    # Escape ALL dynamic fields
     tariff = esc(item.get('tariff', '-'))
     client_name = esc(item.get('client_name', '-'))
     client_phone = esc(item.get('client_phone', '-'))
     address = esc(item.get('address', '-'))
     short_id_safe = esc(short_id)
 
-    return (
+    base = (
         "🎛️ <b>Controller Inbox</b>\n"
         f"🆔 <b>ID:</b> {short_id_safe}\n"
         f"📊 <b>Tarif:</b> {tariff}\n"
@@ -50,6 +46,12 @@ def short_view_text(item: dict) -> str:
         f"📍 <b>Manzil:</b> {address}\n"
         f"📅 <b>Yaratilgan:</b> {fmt_dt(created_dt)}"
     )
+
+    # Ko‘rsatkich: “Ariza i / N”
+    if idx is not None and total is not None and total > 0:
+        base += f"\n\n🗂️ <i>Ariza {idx + 1} / {total}</i>"
+
+    return base
 
 def nav_keyboard(index: int, total: int, current_id: str) -> InlineKeyboardMarkup:
     rows = []
@@ -80,7 +82,7 @@ async def open_inbox(message: Message, state: FSMContext):
         return
 
     await state.update_data(inbox=items, idx=0)
-    text = short_view_text(items[0])
+    text = short_view_text(items[0], idx=0, total=len(items))   # ⬅️ yangilandi
     kb = nav_keyboard(0, len(items), str(items[0]["id"]))
     await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
@@ -93,7 +95,7 @@ async def prev_item(cb: CallbackQuery, state: FSMContext):
     if idx < 0 or idx >= len(items):
         return
     await state.update_data(idx=idx)
-    text = short_view_text(items[idx])
+    text = short_view_text(items[idx], idx=idx, total=len(items))   # ⬅️ yangilandi
     kb = nav_keyboard(idx, len(items), str(items[idx]["id"]))
     await cb.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
 
@@ -106,7 +108,7 @@ async def next_item(cb: CallbackQuery, state: FSMContext):
     if idx < 0 or idx >= len(items):
         return
     await state.update_data(idx=idx)
-    text = short_view_text(items[idx])
+    text = short_view_text(items[idx], idx=idx, total=len(items))   # ⬅️ yangilandi
     kb = nav_keyboard(idx, len(items), str(items[idx]["id"]))
     await cb.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
 
@@ -131,25 +133,18 @@ async def assign_back(cb: CallbackQuery, state: FSMContext):
     if not items:
         await cb.message.edit_text("📭 Inbox bo'sh")
         return
-    text = short_view_text(items[idx])
+    text = short_view_text(items[idx], idx=idx, total=len(items))   # ⬅️ yangilandi
     kb = nav_keyboard(idx, len(items), str(items[idx]["id"]))
     await cb.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
 
 @router.callback_query(F.data.startswith("ctrl_inbox_pick_"))
 async def assign_pick(cb: CallbackQuery, state: FSMContext):
-    parts = cb.data.split("_")
-    
-    if len(parts) < 5:
-        await cb.answer("❌ Noto'g'ri format", show_alert=True)
-        return
-    
-    full_id = parts[3]
-    tech_id = "_".join(parts[4:])
-    
     try:
-        tech_id = int(tech_id)
+        raw = cb.data.replace("ctrl_inbox_pick_", "")
+        full_id, tech_id_str = raw.rsplit("_", 1)   # oxirgi '_' bo‘yicha bo‘linadi
+        tech_id = int(tech_id_str)
     except ValueError:
-        await cb.answer("❌ Noto'g'ri texnik ID raqami", show_alert=True)
+        await cb.answer("❌ Noto'g'ri callback format", show_alert=True)
         return
 
     user = await get_user_by_telegram_id(cb.from_user.id)

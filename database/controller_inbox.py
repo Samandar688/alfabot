@@ -38,8 +38,7 @@ async def get_users_by_role(role: str) -> List[Dict[str, Any]]:
 
 async def fetch_controller_inbox(limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
     """
-    Return list of connection orders that are in status 'in_controller' or 'in_technician'.
-    Includes joined client name/phone and tariff name.
+    Controller uchun faqat statusi 'in_controller' bo‘lgan arizalarni qaytaradi.
     """
     conn = await asyncpg.connect(settings.DB_URL)
     try:
@@ -58,30 +57,27 @@ async def fetch_controller_inbox(limit: int = 50, offset: int = 0) -> List[Dict[
             LEFT JOIN users u ON u.id = co.user_id
             LEFT JOIN tarif t ON t.id = co.tarif_id
             WHERE co.is_active = TRUE
-              AND co.status IN ('in_controller','in_technician')
+              AND co.status = 'in_controller'
             ORDER BY co.created_at DESC, co.id DESC
             LIMIT $1 OFFSET $2
             """,
             limit,
             offset,
         )
-        result: List[Dict[str, Any]] = []
-        for r in rows:
-            item = dict(r)
-            result.append(item)
-        return result
+        return [dict(r) for r in rows]
     finally:
         await conn.close()
 
 
 async def assign_to_technician(request_id: int | str, tech_id: int, actor_id: int) -> None:
     """
-    Move connection order to technician workflow by updating its status
-    to 'in_technician' and create/update Connection record.
-    'request_id' maps to connection_orders.id.
-    'tech_id' is the ID of the technician (recipient).
-    'actor_id' is the ID of the controller (sender).
+    Controller -> Technician yuborish:
+      - connections jadvalida (connecion_id, sender_id, recipient_id, created_at, updated_at) yozuv yaratish
+        (agar shu (connecion_id, recipient_id) bo'yicha bor bo'lsa, faqat sender_id va updated_at yangilanadi)
+      - connection_orders.status = 'in_technician'
+    Eslatma: ustun nomi ataylab 'connecion_id' (xatolik bilan) ishlatilmoqda.
     """
+    # '8_2025' kabi kelganda 8 ni olish
     try:
         request_id_int = int(str(request_id).split("_")[0])
     except Exception:
@@ -90,66 +86,62 @@ async def assign_to_technician(request_id: int | str, tech_id: int, actor_id: in
     conn = await asyncpg.connect(settings.DB_URL)
     try:
         async with conn.transaction():
-            # Ensure technician exists
+            # 1) Texnik mavjudligini tekshirish
             tech_exists = await conn.fetchval(
                 "SELECT 1 FROM users WHERE id = $1 AND role = 'technician'",
-                tech_id,
+                tech_id
             )
             if not tech_exists:
                 raise ValueError("Technician not found")
 
-            # Check if connection already exists for this order
-            existing_connection = await conn.fetchrow(
-                "SELECT id FROM connections WHERE connecion_id = $1",
-                request_id_int
+            # 2) connections: (connecion_id, recipient_id) bo'yicha upsert
+            existing = await conn.fetchrow(
+                """
+                SELECT id
+                FROM connections
+                WHERE connecion_id = $1
+                  AND recipient_id = $2
+                LIMIT 1
+                """,
+                request_id_int, tech_id
             )
 
-            if existing_connection:
-                # Update existing connection
+            if existing:
+                # faqat sender_id va updated_at ni yangilaymiz
                 await conn.execute(
                     """
-                    UPDATE connections 
-                    SET technician_id = $1,
+                    UPDATE connections
+                    SET sender_id  = $1,
                         updated_at = NOW()
-                    WHERE connecion_id = $2
-                    RETURNING id
+                    WHERE id = $2
                     """,
-                    tech_id,
-                    request_id_int
+                    actor_id, existing["id"]
                 )
             else:
-                # Create new connection
+                # faqat kerakli ustunlarni to'ldirib yangi qator qo'shamiz
                 await conn.execute(
                     """
                     INSERT INTO connections (
-                        connecion_id,
-                        sender_id,
-                        technician_id,
+                        connecion_id,  -- (xatoli nom) order id
+                        sender_id,     -- controller (yuboruvchi)
+                        recipient_id,  -- technician (qabul qiluvchi)
                         created_at,
                         updated_at
                     )
                     VALUES ($1, $2, $3, NOW(), NOW())
                     """,
-                    request_id_int,
-                    actor_id,  # controller who is sending
-                    tech_id    # technician who is receiving
+                    request_id_int, actor_id, tech_id
                 )
 
-            # Update order status
+            # 3) Ariza statusini 'in_technician' ga o'tkazish
             await conn.execute(
                 """
                 UPDATE connection_orders
                 SET status = 'in_technician',
-                    controller_notes = COALESCE(controller_notes,'') ||
-                        CASE WHEN controller_notes IS NULL OR controller_notes = '' THEN '' ELSE E'\n' END ||
-                        ('Assigned to Technician ID ' || $2::text || ' by user ' || $3::text),
                     updated_at = NOW()
                 WHERE id = $1
-                RETURNING id
                 """,
-                request_id_int,
-                str(tech_id),
-                str(actor_id),
+                request_id_int
             )
     finally:
         await conn.close()
