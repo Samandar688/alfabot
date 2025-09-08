@@ -106,5 +106,13 @@ async def show_main_menu(message: Message, role: str):
     }
 
     keyboard = role_keyboards.get(role, get_client_main_menu())
-    full_name = html.escape(message.from_user.full_name)
-    await message.answer(f"Assalomu alaykum, {full_name}!", reply_markup=keyboard, parse_mode="HTML")
+    
+    # Database dan full_name olish
+    db_user = await find_user_by_telegram_id(message.from_user.id)
+    full_name = db_user.get("full_name") if db_user else message.from_user.full_name
+    
+    if full_name:
+        full_name = html.escape(full_name)
+        await message.answer(f"Assalomu alaykum, {full_name}!", reply_markup=keyboard, parse_mode="HTML")
+    else:
+        await message.answer("Assalomu alaykum!", reply_markup=keyboard, parse_mode="HTML")

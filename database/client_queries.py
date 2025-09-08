@@ -52,20 +52,36 @@ async def create_service_order(user_id: int, region: str, abonent_id: str, addre
 # -----------------------------
 
 async def ensure_user(telegram_id: int, full_name: Optional[str], username: Optional[str]) -> asyncpg.Record:
-    """Create user if not exists; return row."""
+    """Create user if not exists with sequential ID; return row."""
     conn = await asyncpg.connect(settings.DB_URL)
     try:
-        row = await conn.fetchrow(
-            """
-            INSERT INTO users (telegram_id, full_name, username, role)
-            VALUES ($1, $2, $3, 'client')
-            ON CONFLICT (telegram_id)
-            DO UPDATE SET full_name = EXCLUDED.full_name, username = EXCLUDED.username
-            RETURNING *
-            """,
-            telegram_id, full_name, username
+        # Avval mavjud userni tekshirish
+        existing_user = await conn.fetchrow(
+            "SELECT * FROM users WHERE telegram_id = $1",
+            telegram_id
         )
-        return row
+        
+        if existing_user:
+            # Mavjud userni yangilash
+            row = await conn.fetchrow(
+                """
+                UPDATE users 
+                SET full_name = $2, username = $3, updated_at = NOW()
+                WHERE telegram_id = $1
+                RETURNING *
+                """,
+                telegram_id, full_name, username
+            )
+            return row
+        else:
+            # Ketma-ket ID bilan yangi user yaratish
+            row = await conn.fetchrow(
+                """
+                SELECT * FROM create_user_sequential($1, $2, $3, NULL, 'client'::user_role)
+                """,
+                telegram_id, username, full_name
+            )
+            return row
     finally:
         await conn.close()
 

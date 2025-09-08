@@ -3,7 +3,7 @@ from config import settings
 from typing import Optional
 
 async def get_or_create_user(telegram_id: int, username: Optional[str], full_name: Optional[str] = None) -> str:
-    """telegram_id bo'yicha userni tekshiradi, bo'lmasa 'client' rolida yaratadi.
+    """telegram_id bo'yicha userni tekshiradi, bo'lmasa ketma-ket ID bilan 'client' rolida yaratadi.
     
     Args:
         telegram_id: Telegram foydalanuvchi IDsi
@@ -45,14 +45,31 @@ async def get_or_create_user(telegram_id: int, username: Optional[str], full_nam
                 
             return user['role']
         else:
-            await conn.execute(
+            # Ketma-ket ID bilan yangi user yaratish
+            user_data = await conn.fetchrow(
                 """
-                INSERT INTO users (telegram_id, username, full_name, role)
-                VALUES ($1, $2, $3, $4)
+                SELECT * FROM create_user_sequential($1, $2, $3, NULL, 'client'::user_role)
                 """,
-                telegram_id, username, full_name, "client"
+                telegram_id, username, full_name
             )
             return "client"
+    finally:
+        await conn.close()
+
+async def reset_user_sequence() -> None:
+    """User ID sequence ni hozirgi ma'lumotlarga moslashtiradi."""
+    conn = await asyncpg.connect(settings.DB_URL)
+    try:
+        await conn.execute("SELECT reset_user_sequential_sequence()")
+    finally:
+        await conn.close()
+
+async def get_next_user_id() -> int:
+    """Keyingi ketma-ket user ID ni qaytaradi."""
+    conn = await asyncpg.connect(settings.DB_URL)
+    try:
+        result = await conn.fetchval("SELECT get_next_sequential_user_id()")
+        return result
     finally:
         await conn.close()
 
