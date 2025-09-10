@@ -1,5 +1,5 @@
 import asyncpg
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from decimal import Decimal
 from config import settings
 
@@ -21,5 +21,122 @@ async def create_material(
             name, price, description, quantity, serial_number
         )
         return dict(row)
+    finally:
+        await conn.close()
+
+async def search_materials(search_term: str) -> List[Dict[str, Any]]:
+    """Mahsulotlarni nom bo'yicha qidirish"""
+    conn = await asyncpg.connect(settings.DB_URL)
+    try:
+        rows = await conn.fetch(
+            """
+            SELECT id, name, price, description, quantity, serial_number, created_at, updated_at
+            FROM materials
+            WHERE name ILIKE $1
+            ORDER BY name
+            LIMIT 20
+            """,
+            f"%{search_term}%"
+        )
+        return [dict(row) for row in rows]
+    finally:
+        await conn.close()
+
+async def get_all_materials() -> List[Dict[str, Any]]:
+    """Barcha mahsulotlarni olish"""
+    conn = await asyncpg.connect(settings.DB_URL)
+    try:
+        rows = await conn.fetch(
+            """
+            SELECT id, name, price, description, quantity, serial_number, created_at, updated_at
+            FROM materials
+            ORDER BY name
+            """
+        )
+        return [dict(row) for row in rows]
+    finally:
+        await conn.close()
+
+async def get_material_by_id(material_id: int) -> Optional[Dict[str, Any]]:
+    """ID bo'yicha mahsulotni olish"""
+    conn = await asyncpg.connect(settings.DB_URL)
+    try:
+        row = await conn.fetchrow(
+            """
+            SELECT id, name, price, description, quantity, serial_number, created_at, updated_at
+            FROM materials
+            WHERE id = $1
+            """,
+            material_id
+        )
+        return dict(row) if row else None
+    finally:
+        await conn.close()
+
+async def update_material_quantity(material_id: int, additional_quantity: int) -> Dict[str, Any]:
+    """Mavjud mahsulot miqdoriga qo'shimcha qilish"""
+    conn = await asyncpg.connect(settings.DB_URL)
+    try:
+        row = await conn.fetchrow(
+            """
+            UPDATE materials
+            SET quantity = quantity + $2, updated_at = NOW()
+            WHERE id = $1
+            RETURNING id, name, price, description, quantity, serial_number, created_at, updated_at
+            """,
+            material_id, additional_quantity
+        )
+        return dict(row)
+    finally:
+        await conn.close()
+
+
+async def update_material_name_description(material_id: int, name: str, description: Optional[str] = None) -> Dict[str, Any]:
+    """Mahsulot nomi va tavsifini yangilash"""
+    conn = await asyncpg.connect(settings.DB_URL)
+    try:
+        row = await conn.fetchrow(
+            """
+            UPDATE materials
+            SET name = $2, description = $3, updated_at = NOW()
+            WHERE id = $1
+            RETURNING id, name, price, description, quantity, serial_number, created_at, updated_at
+            """,
+            material_id, name, description
+        )
+        return dict(row)
+    finally:
+        await conn.close()
+
+async def get_low_stock_materials(threshold: int = 10) -> List[Dict[str, Any]]:
+    """Kam zaxirali mahsulotlarni olish"""
+    conn = await asyncpg.connect(settings.DB_URL)
+    try:
+        rows = await conn.fetch(
+            """
+            SELECT id, name, price, description, quantity, serial_number, created_at, updated_at
+            FROM materials
+            WHERE quantity <= $1
+            ORDER BY quantity ASC, name
+            """,
+            threshold
+        )
+        return [dict(row) for row in rows]
+    finally:
+        await conn.close()
+
+async def get_out_of_stock_materials() -> List[Dict[str, Any]]:
+    """Tugagan mahsulotlarni olish"""
+    conn = await asyncpg.connect(settings.DB_URL)
+    try:
+        rows = await conn.fetch(
+            """
+            SELECT id, name, price, description, quantity, serial_number, created_at, updated_at
+            FROM materials
+            WHERE quantity = 0
+            ORDER BY name
+            """
+        )
+        return [dict(row) for row in rows]
     finally:
         await conn.close()

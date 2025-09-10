@@ -5,9 +5,9 @@ from . import (
     connection_order,
     contact,
     language,
-    orders,
     profile,
     service_order,
+    smart_service,
 )
 
 router = Router()
@@ -17,7 +17,7 @@ router.include_routers(
     connection_order.router,
     contact.router,
     language.router,
-    orders.router,
     profile.router,
     service_order.router,
+    smart_service.router,
 )

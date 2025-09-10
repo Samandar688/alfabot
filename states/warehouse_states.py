@@ -8,3 +8,9 @@ class AddMaterialStates(StatesGroup):
     quantity = State()
     price = State()
     description = State()
+
+class UpdateMaterialStates(StatesGroup):
+    search = State()
+    select = State()
+    name = State()
+    description = State()

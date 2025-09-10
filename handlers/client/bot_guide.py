@@ -4,7 +4,7 @@ import os
 
 router = Router()
 
-@router.message(F.text.in_(["Bot qo'llanmasi", "Инструкция по использованию бота"]))
+@router.message(F.text.in_(["📄 Bot qo'llanmasi", "📄Инструкция по использованию бота"]))
 async def bot_guide_handler(message: Message):
     # Video faylni yuborish
     video_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "media", "uztelecom.MP4")
@@ -13,7 +13,7 @@ async def bot_guide_handler(message: Message):
         video = FSInputFile(video_path)
         
         # Chiroyli matn va hashtag bilan
-        caption = """🤖 **UZTELECOM RASMIY BOTI**
+        caption = """🛜 **UZTELECOM RASMIY BOTI**
 
 ✨ *Bizning bot orqali siz quyidagi xizmatlardan foydalanishingiz mumkin:*
 
@@ -40,7 +40,7 @@ async def bot_guide_handler(message: Message):
         )
     else:
         # Agar video topilmasa, faqat matn yuborish
-        text = """🤖 **UZTELECOM RASMIY BOTI**
+        text = """🛜 **UZTELECOM RASMIY BOTI**
 
 ✨ *Bizning bot orqali siz quyidagi xizmatlardan foydalanishingiz mumkin:*
 
