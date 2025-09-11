@@ -14,3 +14,6 @@ class UpdateMaterialStates(StatesGroup):
     select = State()
     name = State()
     description = State()
+
+class StatsStates(StatesGroup):
+    waiting_range = State()

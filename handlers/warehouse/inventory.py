@@ -3,6 +3,7 @@ from aiogram import Router, F
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.filters import StateFilter
+from aiogram.fsm.state import StatesGroup, State
 from decimal import Decimal, InvalidOperation
 
 from filters.role_filter import RoleFilter
@@ -24,6 +25,10 @@ from database.warehouse_queries import (
 
 router = Router()
 router.message.filter(RoleFilter("warehouse"))
+
+# ✅ Local search state (so we don't have to modify states/warehouse_states.py)
+class SearchMaterialStates(StatesGroup):
+    query = State()
 
 def cancel_kb() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
@@ -258,17 +263,12 @@ async def show_materials_page(message: Message, materials: list, page: int, stat
     if len(materials) > items_per_page:
         if page > 0:
             buttons.append(InlineKeyboardButton(text="⬅️ Oldingi", callback_data=f"materials_page_{page-1}"))
-        
-        #buttons.append(InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data="current_page"))
-        
         if page < total_pages - 1:
             buttons.append(InlineKeyboardButton(text="Keyingi ➡️", callback_data=f"materials_page_{page+1}"))
     
-    # Keyboard yaratish
     keyboard_rows = []
     if buttons:
         keyboard_rows.append(buttons)
-    #keyboard_rows.append([InlineKeyboardButton(text="🔙 Orqaga", callback_data="back_to_inventory")])
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
     
@@ -302,38 +302,30 @@ async def materials_pagination_handler(callback_query: CallbackQuery, state: FSM
     except Exception as e:
         await callback_query.answer("❌ Xatolik yuz berdi")
 
-
-
 # ============== 🔎 Qidirish ==============
 
 @router.message(StateFilter(WarehouseStates.inventory_menu), F.text.in_(["🔎 Qidirish", "🔎 Поиск"]))
 async def inv_search_start(message: Message, state: FSMContext):
-    await state.set_state(WarehouseStates.inventory_menu)  # holatni saqlab qolish
+    # Alhida state — boshqa tugmalar bilan to‘qnashmaydi
+    await state.set_state(SearchMaterialStates.query)
     await message.answer("🔎 Qidirmoqchi bo'lgan mahsulot nomini kiriting:", reply_markup=cancel_kb())
 
-# Qidirish uchun alohida handler - faqat inventory_menu holatida va qidirish tugmasi bosilgandan keyin
-@router.message(StateFilter(WarehouseStates.inventory_menu))
-async def inv_search_process(message: Message, state: FSMContext):
+@router.message(StateFilter(SearchMaterialStates.query))
+async def inv_search_query(message: Message, state: FSMContext):
     text = message.text.strip()
     
     # Agar bekor qilish tugmasi bosilsa
     if text.lower() in ("❌ bekor qilish", "bekor", "cancel"):
+        await state.set_state(WarehouseStates.inventory_menu)
         return await message.answer("❌ Bekor qilindi.\n\n📦 Inventarizatsiya menyusi:", reply_markup=get_inventory_actions_keyboard("uz"))
     
-    # Agar boshqa tugmalar bosilsa, ularni boshqa handlerlar boshqarsin
-    if text in ["➕ Mahsulot qo'shish", "✏️ Mahsulotni yangilash", "⚠️ Kam zaxira", 
-                "❌ Tugagan mahsulotlar", "📄 Barcha mahsulotlar", "◀️ Orqaga",
-                "➕ Добавить товар", "✏️ Обновить товар", "⚠️ Низкий запас",
-                "❌ Закончились", "📄 Все товары", "◀️ Назад"]:
-        return  # Boshqa handlerlar boshqarsin
-    
-    # Qidirish so'zi kiritilgan
     if len(text) < 2:
         return await message.answer("❗ Qidiruv so'zi juda qisqa. Qaytadan kiriting:")
     
     try:
         materials = await search_materials(text)
         if not materials:
+            # Avvalgi xulq-atvorga mos: menyuga qaytarmaymiz, foydalanuvchi yana yozsin
             return await message.answer("❌ Hech qanday mahsulot topilmadi. Boshqa nom bilan qidiring:")
         
         result_text = f"🔎 '{text}' bo'yicha topilgan mahsulotlar:\n\n"
@@ -343,25 +335,31 @@ async def inv_search_process(message: Message, state: FSMContext):
             result_text += f"   💰 Narx: {fmt_sum(material['price'])} so'm\n\n"
         
         await message.answer(result_text, parse_mode="HTML")
+        await state.set_state(WarehouseStates.inventory_menu)
         await message.answer("📦 Inventarizatsiya menyusi:", reply_markup=get_inventory_actions_keyboard("uz"))
         
     except Exception as e:
         await message.answer(f"❌ Xatolik: {e}")
+        await state.set_state(WarehouseStates.inventory_menu)
         await message.answer("📦 Inventarizatsiya menyusi:", reply_markup=get_inventory_actions_keyboard("uz"))
 
 # ============== ⚠️ Kam zaxira ==============
 
 @router.message(StateFilter(WarehouseStates.inventory_menu), F.text.in_(["⚠️ Kam zaxira", "⚠️ Низкий запас"]))
 async def inv_low_stock(message: Message, state: FSMContext):
+    print(f"DEBUG: Kam zaxira tugmasi bosildi - User ID: {message.from_user.id}")
     try:
-        materials = await get_low_stock_materials(10)  # 10 dan kam bo'lganlar
+        print("DEBUG: get_low_stock_materials chaqirilmoqda...")
+        materials = await get_low_stock_materials(10)  
+        print(f"DEBUG: Topilgan materiallar soni: {len(materials) if materials else 0}")
+        
         if not materials:
+            print("DEBUG: Hech qanday kam zaxirali material topilmadi")
             return await message.answer("✅ Barcha mahsulotlar yetarli miqdorda mavjud.")
         
         text = "⚠️ <b>Kam zaxirali mahsulotlar (10 dan kam):</b>\n\n"
         
         for i, material in enumerate(materials, 1):
-            # Miqdorga qarab rangli belgilar
             if material['quantity'] == 0:
                 status_icon = "🔴"  # Tugagan
             elif material['quantity'] <= 3:
@@ -375,7 +373,6 @@ async def inv_low_stock(message: Message, state: FSMContext):
             text += f"   📦 Miqdor: <b>{material['quantity']}</b>\n"
             text += f"   💰 Narx: {fmt_sum(material['price'])} so'm\n"
             
-            # Tavsif qo'shish
             if material.get('description'):
                 text += f"   📝 Tavsif: {material['description'][:50]}{'...' if len(material['description']) > 50 else ''}\n"
             
@@ -417,11 +414,9 @@ async def inv_update_select(message: Message, state: FSMContext):
     data = await state.get_data()
     materials = data.get('materials', [])
     
-    # Tanlangan mahsulotni aniqlash
     selected_material = None
     text = message.text.strip()
     
-    # "1. Mahsulot nomi" formatini parse qilish
     if text.startswith(tuple(f"{i}." for i in range(1, 11))):
         try:
             index = int(text.split('.')[0]) - 1
@@ -467,7 +462,6 @@ async def inv_update_name(message: Message, state: FSMContext):
         parse_mode="HTML",
         reply_markup=cancel_kb()
     )
-
 
 @router.message(StateFilter(UpdateMaterialStates.description))
 async def inv_update_description(message: Message, state: FSMContext):
