@@ -3,6 +3,8 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.fsm.context import FSMContext
 from typing import List, Dict, Any
 from datetime import datetime
+import html
+
 
 from filters.role_filter import RoleFilter
 from database.jm_inbox_queries import (
@@ -38,21 +40,42 @@ def _fmt_dt(dt) -> str:
         return dt.strftime("%d.%m.%Y %H:%M")
     return (str(dt)[:16]) if dt else "—"
 
+# fayl boshiga qo'shing
+
+def _esc(v) -> str:
+    if v is None:
+        return "—"
+    return html.escape(str(v), quote=False)
+
+def _fmt_dt(dt) -> str:
+    from datetime import datetime
+    if isinstance(dt, datetime):
+        return dt.strftime("%d.%m.%Y %H:%M")
+    return (str(dt)[:16]) if dt else "—"
+
 async def _render_card(target: Message | CallbackQuery, items: List[Dict[str, Any]], idx: int, lang: str):
     total = len(items)
     it = items[idx]
 
-    conn_id        = it.get("connection_id")          # = order_id
-    order_created  = _fmt_dt(it.get("order_created_at"))
-    client_name    = it.get("client_full_name") or "—"
-    client_phone   = it.get("client_phone") or "—"
-    region         = it.get("order_region") or "—"
-    address        = it.get("order_address") or "—"
+    # xom qiymatlar:
+    conn_id_raw      = it.get("connection_id")          # = order_id
+    order_created    = _fmt_dt(it.get("order_created_at"))
+    client_name_raw  = it.get("client_full_name")
+    client_phone_raw = it.get("client_phone")
+    region_raw       = it.get("order_region")
+    address_raw      = it.get("order_address")
+
+    # HTML uchun xavfsiz qilib o'girib olamiz:
+    conn_id_txt    = _esc(conn_id_raw)
+    client_name    = _esc(client_name_raw)
+    client_phone   = _esc(client_phone_raw)
+    region         = _esc(region_raw)
+    address        = _esc(address_raw)
 
     if lang == "uz":
         text = (
             "🛠 <b>Ulanish arizasi — To‘liq ma'lumot</b>\n\n"
-            f"🆔 <b>Ariza ID:</b> {conn_id or '—'}\n"
+            f"🆔 <b>Ariza ID:</b> {conn_id_txt}\n"
             f"📅 <b>Sana:</b> {order_created}\n"
             f"👤 <b>Mijoz:</b> {client_name}\n"
             f"📞 <b>Telefon:</b> {client_phone}\n"
@@ -63,7 +86,7 @@ async def _render_card(target: Message | CallbackQuery, items: List[Dict[str, An
     else:
         text = (
             "🛠 <b>Заявка на подключение — Полные данные</b>\n\n"
-            f"🆔 <b>ID:</b> {conn_id or '—'}\n"
+            f"🆔 <b>ID:</b> {conn_id_txt}\n"
             f"📅 <b>Дата:</b> {order_created}\n"
             f"👤 <b>Клиент:</b> {client_name}\n"
             f"📞 <b>Телефон:</b> {client_phone}\n"
@@ -72,7 +95,8 @@ async def _render_card(target: Message | CallbackQuery, items: List[Dict[str, An
             f"📄 <i>Заявка #{idx+1} / {total}</i>"
         )
 
-    kb = _kb(idx, total, conn_id=conn_id, lang=lang)
+    # klaviaturadagi callback_data uchun int kerak bo'ladi, shuning uchun xomini ishlatamiz:
+    kb = _kb(idx, total, conn_id=conn_id_raw, lang=lang)
 
     if isinstance(target, Message):
         await target.answer(text, reply_markup=kb, parse_mode="HTML")

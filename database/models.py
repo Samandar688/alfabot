@@ -122,9 +122,10 @@ class SaffApplication(BaseModel):
 @dataclass
 class Connection(BaseModel):
     id: Optional[int] = None
-    user_id: Optional[int] = None
     sender_id: Optional[int] = None
+    sender_status: Optional[str] = None
     recipient_id: Optional[int] = None
+    recipient_status: Optional[str] = None
     connecion_id: Optional[int] = None
     technician_id: Optional[int] = None
     saff_id: Optional[int] = None
@@ -147,3 +148,10 @@ class MaterialRequests(BaseModel):
     user_id: Optional[int] = None
     applications_id: Optional[int] = None
     material_id: Optional[int] = None
+
+@dataclass
+class MaterialAndTechnican(BaseModel):
+    id: Optional[int] = None
+    user_id: Optional[int] = None
+    material_id: Optional[int] = None
+    quantity: Optional[int] = None
