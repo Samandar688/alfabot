@@ -22,3 +22,17 @@ class ServiceOrderStates(StatesGroup):
     waiting_for_media = State()
     asking_for_location = State()
     waiting_for_location = State()
+    confirming_service = State()
+
+class ProfileEditStates(StatesGroup):
+    """Profile edit states for client"""
+    waiting_for_new_name = State()
+
+class SmartServiceStates(StatesGroup):
+    """Smart service order states for client"""
+    selecting_category = State()
+    selecting_service_type = State()
+    entering_address = State()
+    asking_for_location = State()
+    waiting_for_location = State()
+    confirming_order = State()

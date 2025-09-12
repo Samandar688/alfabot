@@ -5,7 +5,7 @@ from . import (
     inbox,
     inventory,
     orders,
-    role_integration,
+    language,
     statistics,
 )
 
@@ -16,6 +16,6 @@ router.include_routers(
     inbox.router,
     inventory.router,
     orders.router,
-    role_integration.router,
+    language.router,
     statistics.router,
 )

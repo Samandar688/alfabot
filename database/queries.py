@@ -140,3 +140,109 @@ async def update_user_full_name(telegram_id: int, full_name: str) -> bool:
         return result != 'UPDATE 0'
     finally:
         await conn.close()
+
+async def get_user_language(telegram_id: int) -> str:
+    """Get user's language by telegram_id; return 'uz' as default."""
+    conn = await asyncpg.connect(settings.DB_URL)
+    try:
+        language = await conn.fetchval(
+            "SELECT language FROM users WHERE telegram_id = $1",
+            telegram_id
+        )
+        return language if language else 'uz'
+    finally:
+        await conn.close()
+
+# SmartService Manager Queries
+async def get_smart_service_orders_for_manager(limit: int = 10, offset: int = 0) -> list:
+    """Menejer uchun SmartService arizalarini olish.
+    
+    Args:
+        limit: Qaytariladigan arizalar soni
+        offset: Boshlash pozitsiyasi
+        
+    Returns:
+        list: SmartService arizalari ro'yxati
+    """
+    conn = await asyncpg.connect(settings.DB_URL)
+    try:
+        orders = await conn.fetch(
+            """
+            SELECT sso.id, sso.user_id, sso.category, sso.service_type, 
+                   sso.address, sso.created_at, sso.updated_at,
+                   u.full_name, u.phone, u.telegram_id
+            FROM smart_service_orders sso
+            JOIN users u ON sso.user_id = u.id
+            ORDER BY sso.created_at DESC
+            LIMIT $1 OFFSET $2
+            """,
+            limit, offset
+        )
+        return [dict(order) for order in orders]
+    finally:
+        await conn.close()
+
+async def get_smart_service_order_by_id(order_id: int) -> Optional[dict]:
+    """ID bo'yicha SmartService arizasini olish.
+    
+    Args:
+        order_id: Ariza IDsi
+        
+    Returns:
+        dict: Ariza ma'lumotlari yoki None
+    """
+    conn = await asyncpg.connect(settings.DB_URL)
+    try:
+        order = await conn.fetchrow(
+            """
+            SELECT sso.id, sso.user_id, sso.category, sso.service_type, 
+                   sso.address, sso.created_at, sso.updated_at,
+                   u.full_name, u.phone, u.telegram_id
+            FROM smart_service_orders sso
+            JOIN users u ON sso.user_id = u.id
+            WHERE sso.id = $1
+            """,
+            order_id
+        )
+        return dict(order) if order else None
+    finally:
+        await conn.close()
+
+async def get_smart_service_orders_count() -> int:
+    """Jami SmartService arizalari sonini olish.
+    
+    Returns:
+        int: Jami arizalar soni
+    """
+    conn = await asyncpg.connect(settings.DB_URL)
+    try:
+        count = await conn.fetchval("SELECT COUNT(*) FROM smart_service_orders")
+        return count or 0
+    finally:
+        await conn.close()
+
+async def create_smart_service_order(user_id: int, category: str, service_type: str, address: str) -> int:
+    """Yangi SmartService arizasini yaratish.
+    
+    Args:
+        user_id: Foydalanuvchi IDsi
+        category: Xizmat kategoriyasi
+        service_type: Xizmat turi
+        address: Manzil
+        
+    Returns:
+        int: Yaratilgan ariza IDsi
+    """
+    conn = await asyncpg.connect(settings.DB_URL)
+    try:
+        order_id = await conn.fetchval(
+            """
+            INSERT INTO smart_service_orders (user_id, category, service_type, address)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id
+            """,
+            user_id, category, service_type, address
+        )
+        return order_id
+    finally:
+        await conn.close()
