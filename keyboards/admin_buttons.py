@@ -157,184 +157,52 @@ def get_users_pagination_keyboard(current_page: int, total_pages: int, has_prev:
 
 # ========== Admin Orders (handlers/admin/orders.py) ==========
 def get_applications_main_menu(lang: str = "uz") -> ReplyKeyboardMarkup:
-    """Zayavkalar asosiy menusi ReplyKeyboard ko'rinishida"""
-    dashboard_text = "📊 Umumiy dashboard" if lang == "uz" else "📊 Общая панель"
     connection_text = "🔌 Ulanish zayavkalari" if lang == "uz" else "🔌 Заявки на подключение"
     technician_text = "🔧 Texnik zayavkalar" if lang == "uz" else "🔧 Технические заявки"
     saff_text = "👥 Xodim zayavkalari" if lang == "uz" else "👥 Заявки сотрудников"
     back_text = "◀️ Orqaga" if lang == "uz" else "◀️ Назад"
 
     keyboard = [
-        [KeyboardButton(text=dashboard_text), KeyboardButton(text=connection_text)],
-        [KeyboardButton(text=technician_text), KeyboardButton(text=saff_text)],
-        [KeyboardButton(text=back_text)]
+        [KeyboardButton(text=technician_text), KeyboardButton(text=connection_text)],
+        [KeyboardButton(text=saff_text), KeyboardButton(text=back_text)]
     ]
 
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
 
-
-# handlers/admin/orders.py uchun
-def get_applications_main_menu_inline(lang: str = "uz") -> InlineKeyboardMarkup:
-    """Zayavkalar asosiy menusi InlineKeyboard ko'rinishida"""
-    dashboard_text = "📊 Umumiy dashboard" if lang == "uz" else "📊 Общая панель"
-    connection_text = "🔌 Ulanish zayavkalari" if lang == "uz" else "🔌 Заявки на подключение"
-    technician_text = "🔧 Texnik zayavkalar" if lang == "uz" else "🔧 Технические заявки"
-    saff_text = "👥 Xodim zayavkalari" if lang == "uz" else "👥 Заявки сотрудников"
-    back_text = "◀️ Orqaga" if lang == "uz" else "◀️ Назад"
-
-    keyboard = [
-        [InlineKeyboardButton(text=dashboard_text, callback_data="app_dashboard")],
-        [InlineKeyboardButton(text=connection_text, callback_data="app_connection_orders")],
-        [InlineKeyboardButton(text=technician_text, callback_data="app_technician_orders")],
-        [InlineKeyboardButton(text=saff_text, callback_data="app_saff_orders")],
-        [InlineKeyboardButton(text=back_text, callback_data="applications_back_to_main")]
-    ]
-
-    return InlineKeyboardMarkup(inline_keyboard=keyboard)
-
-
-# handlers/admin/orders.py uchun
-def get_applications_dashboard_menu(lang: str = "uz") -> InlineKeyboardMarkup:
-    """Dashboard menusi klaviaturasi"""
-    today_text = "📈 Bugungi statistika" if lang == "uz" else "📈 Сегодняшняя статистика"
-    weekly_text = "📊 Haftalik trend" if lang == "uz" else "📊 Недельный тренд"
-    critical_text = "🚨 Kritik zayavkalar" if lang == "uz" else "🚨 Критические заявки"
-    delayed_text = "⏰ Kechikkan zayavkalar" if lang == "uz" else "⏰ Просроченные заявки"
-    back_text = "◀️ Orqaga" if lang == "uz" else "◀️ Назад"
-    
-    keyboard = [
-        [InlineKeyboardButton(text=today_text, callback_data="app_today_stats")],
-        [InlineKeyboardButton(text=weekly_text, callback_data="app_weekly_trend")],
-        [InlineKeyboardButton(text=critical_text, callback_data="app_critical_orders")],
-        [InlineKeyboardButton(text=delayed_text, callback_data="app_delayed_orders")],
-        [InlineKeyboardButton(text=back_text, callback_data="app_back_to_main")]
-    ]
-    
-    return InlineKeyboardMarkup(inline_keyboard=keyboard)
-
-
-# handlers/admin/orders.py uchun
-def get_applications_type_menu(app_type: str, lang: str = "uz") -> InlineKeyboardMarkup:
-    """Ariza turlari menyusi"""
-    back_text = "🔙 Orqaga" if lang == "uz" else "🔙 Назад"
-    
-    keyboard = [
-        [InlineKeyboardButton(text=back_text, callback_data="applications_main")]
-    ]
-    
-    return InlineKeyboardMarkup(inline_keyboard=keyboard)
-
-
-# handlers/admin/orders.py uchun
-def get_applications_filter_menu(app_type: str, lang: str = "uz") -> InlineKeyboardMarkup:
-    """Ariza filtrlash menyusi"""
-    back_text = "🔙 Orqaga" if lang == "uz" else "🔙 Назад"
-    
-    keyboard = [
-        [InlineKeyboardButton(text=back_text, callback_data=f"{app_type}_orders")]
-    ]
-    
-    return InlineKeyboardMarkup(inline_keyboard=keyboard)
-
-
-# handlers/admin/orders.py uchun
-def get_back_to_main_keyboard(lang: str = "uz") -> InlineKeyboardMarkup:
-    """Asosiy menyuga qaytish klaviaturasi"""
-    back_text = "🔙 Asosiy menyu" if lang == "uz" else "🔙 Главное меню"
-    
-    keyboard = [
-        [InlineKeyboardButton(text=back_text, callback_data="applications_main")]
-    ]
-    
-    return InlineKeyboardMarkup(inline_keyboard=keyboard)
-
-
-
-
-
-
-
-
-# handlers/admin/orders.py uchun
-def get_applications_pagination_keyboard(current_page: int, total_pages: int, has_prev: bool, has_next: bool, app_type: str, action: str = "list") -> InlineKeyboardMarkup:
-    """Zayavkalar paginatsiyasi uchun klaviatura
-    
-    Args:
-        current_page: Joriy sahifa raqami
-        total_pages: Jami sahifalar soni
-        has_prev: Oldingi sahifa mavjudligi
-        has_next: Keyingi sahifa mavjudligi
-        app_type: Zayavka turi (connection, technician, saff)
-        action: Harakat turi (list, search, filter)
-    
-    Returns:
-        InlineKeyboardMarkup: Paginatsiya klaviaturasi
+# ========== Admin Orders Navigation (handlers/admin/orders.py) ==========
+def get_orders_navigation_keyboard(current_index: int, total_orders: int, order_type: str, lang: str = "uz") -> InlineKeyboardMarkup:
+    """
+    Zayavkalar orasida navigatsiya uchun inline keyboard
     """
     keyboard = []
     
-    # Navigatsiya tugmalari
-    nav_row = []
+    # Navigation tugmalari
+    nav_buttons = []
     
-    if has_prev:
-        # Birinchi sahifa
-        if current_page > 2:
-            nav_row.append(InlineKeyboardButton(text="⏪ 1", callback_data=f"app_{app_type}_{action}_page_1"))
-        
-        # Oldingi sahifa
-        nav_row.append(InlineKeyboardButton(text="◀️ Oldingi", callback_data=f"app_{app_type}_{action}_page_{current_page-1}"))
+    # Oldingi tugma
+    if current_index > 0:
+        prev_text = "⬅️ Oldingi" if lang == "uz" else "⬅️ Предыдущий"
+        nav_buttons.append(InlineKeyboardButton(
+            text=prev_text,
+            callback_data=f"admin_order_prev_{order_type}_{current_index-1}"
+        ))
     
-    # Joriy sahifa ko'rsatkichi
-    nav_row.append(InlineKeyboardButton(text=f"📄 {current_page}/{total_pages}", callback_data="current_page"))
+    # Keyingi tugma
+    if current_index < total_orders - 1:
+        next_text = "Keyingi ➡️" if lang == "uz" else "Следующий ➡️"
+        nav_buttons.append(InlineKeyboardButton(
+            text=next_text,
+            callback_data=f"admin_order_next_{order_type}_{current_index+1}"
+        ))
     
-    if has_next:
-        # Keyingi sahifa
-        nav_row.append(InlineKeyboardButton(text="Keyingi ▶️", callback_data=f"app_{app_type}_{action}_page_{current_page+1}"))
-        
-        # Oxirgi sahifa
-        if current_page < total_pages - 1:
-            nav_row.append(InlineKeyboardButton(text=f"{total_pages} ⏩", callback_data=f"app_{app_type}_{action}_page_{total_pages}"))
+    if nav_buttons:
+        keyboard.append(nav_buttons)
     
-    if nav_row:
-        keyboard.append(nav_row)
-    
-    # Sahifa raqamlari (joriy sahifa atrofida)
-    page_row = []
-    start_page = max(1, current_page - 2)
-    end_page = min(total_pages, current_page + 2)
-    
-    for page in range(start_page, end_page + 1):
-        if page == current_page:
-            page_row.append(InlineKeyboardButton(text=f"• {page} •", callback_data="current_page"))
-        else:
-            page_row.append(InlineKeyboardButton(text=str(page), callback_data=f"app_{app_type}_{action}_page_{page}"))
-    
-    if len(page_row) > 1:  
-        keyboard.append(page_row)
-    
-    # Orqaga qaytish tugmasi
-    keyboard.append([
-        InlineKeyboardButton(text="◀️ Orqaga", callback_data=f"app_{app_type}_orders")
-    ])
-    
-    return InlineKeyboardMarkup(inline_keyboard=keyboard)
-
-
-# handlers/admin/orders.py uchun
-def get_application_details_keyboard(app_id: int, app_type: str, lang: str = "uz") -> InlineKeyboardMarkup:
-    """Zayavka tafsilotlari uchun klaviatura"""
-    edit_text = "✏️ Tahrirlash" if lang == "uz" else "✏️ Редактировать"
-    status_text = "🔄 Statusni o'zgartirish" if lang == "uz" else "🔄 Изменить статус"
-    history_text = "📜 Tarix" if lang == "uz" else "📜 История"
+    # Orqaga tugma
     back_text = "◀️ Orqaga" if lang == "uz" else "◀️ Назад"
-    
-    keyboard = [
-        [InlineKeyboardButton(text=edit_text, callback_data=f"app_{app_type}_edit_{app_id}")],
-        [InlineKeyboardButton(text=status_text, callback_data=f"app_{app_type}_status_{app_id}")],
-        [InlineKeyboardButton(text=history_text, callback_data=f"app_{app_type}_history_{app_id}")],
-        [InlineKeyboardButton(text=back_text, callback_data=f"app_{app_type}_list")]
-    ]
+    keyboard.append([InlineKeyboardButton(
+        text=back_text,
+        callback_data="admin_orders_back"
+    )])
     
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
-
-
-
