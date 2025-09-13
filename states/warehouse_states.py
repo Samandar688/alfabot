@@ -15,5 +15,10 @@ class UpdateMaterialStates(StatesGroup):
     name = State()
     description = State()
 
+class TechnicianMaterialStates(StatesGroup):
+    select_technician = State()
+    select_material = State()
+    enter_quantity = State()
+
 class StatsStates(StatesGroup):
     waiting_range = State()

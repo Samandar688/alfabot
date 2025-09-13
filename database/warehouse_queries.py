@@ -4,6 +4,24 @@ from decimal import Decimal
 from datetime import date, datetime
 from config import settings
 
+# ---------- FOYDALANUVCHILAR ----------
+async def get_users_by_role(role: str) -> List[Dict[str, Any]]:
+    """Warehouse uchun alohida get_users_by_role funksiyasi"""
+    conn = await asyncpg.connect(settings.DB_URL)
+    try:
+        rows = await conn.fetch(
+            """
+            SELECT id, full_name, username, phone, telegram_id
+            FROM users
+            WHERE role = $1 AND COALESCE(is_blocked, FALSE) = FALSE
+            ORDER BY full_name NULLS LAST, id
+            """,
+            role,
+        )
+        return [dict(r) for r in rows]
+    finally:
+        await conn.close()
+
 # ---------- MATERIALLAR ASOSIY CRUD / SELEKTLAR ----------
 async def create_material(
     name: str,
@@ -309,6 +327,81 @@ async def get_warehouse_inventory_for_export() -> List[Dict[str, Any]]:
         
         rows = await conn.fetch(query)
         return [dict(row) for row in rows]
+    finally:
+        await conn.close()
+
+# ---------- MATERIAL BERISH FUNKSIYASI ----------
+async def give_material_to_technician(user_id: int, material_id: int, quantity: int) -> Dict[str, Any]:
+    """
+    Texnikga material berish funksiyasi.
+    Xavfsiz UPSERT va manfiy miqdordan himoyalanish bilan.
+    """
+    conn = await asyncpg.connect(settings.DB_URL)
+    try:
+        async with conn.transaction():
+            # Xavfsiz material yangilash va texnikga berish
+            result = await conn.fetchrow(
+                """
+                WITH upd AS (
+                    UPDATE materials 
+                    SET quantity = quantity - $3
+                    WHERE id = $2 AND quantity >= $3
+                    RETURNING id, name, quantity
+                )
+                INSERT INTO material_and_technician (user_id, material_id, quantity)
+                SELECT $1, $2, $3
+                FROM upd
+                ON CONFLICT (user_id, material_id)
+                DO UPDATE SET quantity = material_and_technician.quantity + EXCLUDED.quantity
+                RETURNING (SELECT name FROM materials WHERE id = $2) as material_name,
+                         quantity as given_quantity;
+                """,
+                user_id, material_id, quantity
+            )
+            
+            if not result:
+                # Omborda yetarli material yo'q
+                material_info = await conn.fetchrow(
+                    "SELECT name, quantity FROM materials WHERE id = $1",
+                    material_id
+                )
+                if material_info:
+                    raise ValueError(f"Omborda yetarli {material_info['name']} yo'q. Mavjud: {material_info['quantity']}")
+                else:
+                    raise ValueError("Material topilmadi")
+            
+            return {
+                "success": True,
+                "material_name": result["material_name"],
+                "given_quantity": result["given_quantity"],
+                "message": f"{result['material_name']} materialidan {quantity} dona texnikga berildi"
+            }
+    finally:
+        await conn.close()
+
+async def get_technician_materials(user_id: int) -> List[Dict[str, Any]]:
+    """
+    Texnikda mavjud materiallar ro'yxatini olish
+    """
+    conn = await asyncpg.connect(settings.DB_URL)
+    try:
+        rows = await conn.fetch(
+            """
+            SELECT 
+                mt.material_id,
+                m.name as material_name,
+                mt.quantity,
+                m.description,
+                mt.created_at,
+                mt.updated_at
+            FROM material_and_technician mt
+            JOIN materials m ON m.id = mt.material_id
+            WHERE mt.user_id = $1 AND mt.quantity > 0
+            ORDER BY m.name
+            """,
+            user_id
+        )
+        return [dict(r) for r in rows]
     finally:
         await conn.close()
 

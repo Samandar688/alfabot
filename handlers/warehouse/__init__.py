@@ -7,6 +7,7 @@ from . import (
     orders,
     language,
     statistics,
+    technician_to_give_maerial,
 )
 
 router = Router()
@@ -18,4 +19,5 @@ router.include_routers(
     orders.router,
     language.router,
     statistics.router,
+    technician_to_give_maerial.router,
 )
