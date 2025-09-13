@@ -104,8 +104,7 @@ class SaffApplication(BaseModel):
     description: Optional[str] = None
     status: Dict[str, str] = field(
         default_factory=lambda: {
-            "in_manager": "Manager Assigned",
-            "in_junior_manager": "Junior Manager Assigned",
+            "in_call_center_supervisor": "Call Center Supervisor Assigned",
             "in_controller": "Controller Assigned",
             "in_technician": "Technician Assigned",
             "in_technician_work": "Technician Working",
