@@ -20,8 +20,7 @@ async def db_get_user_by_telegram_id(telegram_id: int) -> Optional[Dict[str, Any
     finally:
         await conn.close()
 
-# 2) users.id -> connections (recipient_id bo‘yicha)
-#    Diqqat: jadvalda ustun "connecion_id" va "saff_id" bo‘lgani uchun alias ishlatyapmiz.
+# 2) connections (recipient_id bo‘yicha) — Eslatma: connections jadvalida user_id yo‘q!
 async def db_get_connections_by_recipient(recipient_id: int, limit: int = 20) -> List[Dict[str, Any]]:
     conn = await asyncpg.connect(settings.DB_URL)
     try:
@@ -29,12 +28,11 @@ async def db_get_connections_by_recipient(recipient_id: int, limit: int = 20) ->
             """
             SELECT
                 id,
-                user_id,
                 sender_id,
                 recipient_id,
-                connecion_id AS connection_id,  -- ✅ alias (order_id)
+                connecion_id AS connection_id,  -- = order_id (connection_orders.id)
                 technician_id,
-                saff_id       AS staff_id,      -- ✅ alias
+                saff_id       AS staff_id,
                 created_at,
                 updated_at
             FROM connections
@@ -48,8 +46,7 @@ async def db_get_connections_by_recipient(recipient_id: int, limit: int = 20) ->
     finally:
         await conn.close()
 
-# 3) connection_orders: connections.connecion_id -> connection_orders.id
-#    Eslatma: parametr nomi 'order_id', ammo moslik uchun funksiya nomi qoldirildi.
+# 3) connection_orders: id bo‘yicha olish
 async def db_get_connection_order_by_connection_id(order_id: int) -> Optional[Dict[str, Any]]:
     conn = await asyncpg.connect(settings.DB_URL)
     try:
@@ -73,7 +70,7 @@ async def db_get_connection_order_by_connection_id(order_id: int) -> Optional[Di
     finally:
         await conn.close()
 
-# 4) users.id -> user (full_name, phone olish uchun)
+# 4) users.id -> user (F.I.O, telefon va h.k.)
 async def db_get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
     conn = await asyncpg.connect(settings.DB_URL)
     try:
@@ -90,10 +87,10 @@ async def db_get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
     finally:
         await conn.close()
 
-# ==================== YANGI FUNKSIYALAR (JM oqimi uchun) ====================
+# ==================== JM oqimi ====================
 
-# JM Inbox: faqat 'in_junior_manager' dagi arizalar.
-# connections (recipient_id = JM id) JOIN connection_orders(id = connecion_id) LEFT JOIN users(order.user_id)
+# JM Inbox: faqat 'in_junior_manager' dagi arizalar
+# connections(recipient_id = JM id) JOIN connection_orders(id = connecion_id) LEFT JOIN users(order.user_id)
 async def db_get_jm_inbox_items(recipient_id: int, limit: int = 50) -> List[Dict[str, Any]]:
     conn = await asyncpg.connect(settings.DB_URL)
     try:
@@ -101,7 +98,6 @@ async def db_get_jm_inbox_items(recipient_id: int, limit: int = 50) -> List[Dict
             """
             SELECT
                 c.id                   AS connection_record_id,
-                c.user_id              AS connection_user_id,
                 c.sender_id,
                 c.recipient_id,
                 c.connecion_id         AS connection_id,      -- order_id
@@ -132,8 +128,7 @@ async def db_get_jm_inbox_items(recipient_id: int, limit: int = 50) -> List[Dict
     finally:
         await conn.close()
 
-# Order JM ga tegishli-yo'qligini tekshirish:
-# (connection_orders.id = order_id bo'lishi va connections.recipient_id = jm_id bo'lishi shart)
+# Order JM ga tegishli-yo'qligini tekshirish
 async def db_check_order_ownership(order_id: int, jm_id: int) -> bool:
     conn = await asyncpg.connect(settings.DB_URL)
     try:
@@ -159,7 +154,7 @@ async def db_move_order_to_controller(order_id: int) -> bool:
             """
             UPDATE connection_orders
                SET status    = 'in_controller'::connection_order_status,
-                   updated_at = now()
+                   updated_at = NOW()
              WHERE id        = $1
                AND status    = 'in_junior_manager'::connection_order_status
          RETURNING id
@@ -170,11 +165,8 @@ async def db_move_order_to_controller(order_id: int) -> bool:
     finally:
         await conn.close()
 
-
+# Ichki yordamchi: ixtiyoriy controller tanlash
 async def db_pick_any_controller(conn) -> Optional[int]:
-    """
-    Istalgan aktiv controller ID sini qaytaradi (birinchi topilgan).
-    """
     row = await conn.fetchrow(
         """
         SELECT id
@@ -186,73 +178,48 @@ async def db_pick_any_controller(conn) -> Optional[int]:
     )
     return row["id"] if row else None
 
-
+# JM -> Controller: status logi bilan
 async def db_jm_send_to_controller(order_id: int, jm_id: int, controller_id: Optional[int] = None) -> bool:
-    """
-    JM arizani controllerga uzatadi:
-      1) connection_orders.status: in_junior_manager -> in_controller
-      2) connections jadvaliga (yoki mavjudini yangilab) yozuv: connecion_id=order_id, sender_id=jm_id, recipient_id=controller_id
-    QAYTADIGAN: True/False (status o'zgargan bo'lsa True)
-    """
     conn = await asyncpg.connect(settings.DB_URL)
     try:
         async with conn.transaction():
-            # 1) Statusni tekshirib/yangilash
-            ok_row = await conn.fetchrow(
-                """
+            row_old = await conn.fetchrow(
+                "SELECT status FROM connection_orders WHERE id=$1 FOR UPDATE", order_id
+            )
+            if not row_old or row_old["status"] != "in_junior_manager":
+                return False
+            old_status = row_old["status"]
+
+            row_new = await conn.fetchrow("""
                 UPDATE connection_orders
-                   SET status     = 'in_controller'::connection_order_status,
-                       updated_at = NOW()
-                 WHERE id      = $1
-                   AND status  = 'in_junior_manager'::connection_order_status
-             RETURNING id
-                """,
-                order_id
-            )
-            if not ok_row:
-                return False  # noto'g'ri status bo'lsa, davom ETMAYMIZ
+                   SET status='in_controller'::connection_order_status,
+                       updated_at=NOW()
+                 WHERE id=$1 AND status='in_junior_manager'::connection_order_status
+             RETURNING status
+            """, order_id)
+            if not row_new:
+                return False
+            new_status = row_new["status"]
 
-            # 2) Controller tanlash (agar berilmagan bo‘lsa)
             if controller_id is None:
-                controller_id = await db_pick_any_controller(conn)
-                if controller_id is None:
+                row = await conn.fetchrow("""
+                    SELECT id FROM users
+                    WHERE role='controller' AND COALESCE(is_blocked,false)=false
+                    ORDER BY id LIMIT 1
+                """)
+                if not row:
                     raise ValueError("Controller topilmadi")
+                controller_id = row["id"]
 
-            # 3) connections yozuvi (connecion_id) — upsertga o‘xshash
-            existing = await conn.fetchrow(
-                """
-                SELECT id
-                FROM connections
-                WHERE connecion_id = $1 AND recipient_id = $2
-                LIMIT 1
-                """,
-                order_id, controller_id
-            )
-
-            if existing:
-                await conn.execute(
-                    """
-                    UPDATE connections
-                    SET sender_id  = $1,
-                        updated_at = NOW()
-                    WHERE id = $2
-                    """,
-                    jm_id, existing["id"]
+            # 👉 Faqat INSERT
+            await conn.execute("""
+                INSERT INTO connections(
+                    connecion_id, sender_id, recipient_id,
+                    sender_status, recipient_status,
+                    created_at, updated_at
                 )
-            else:
-                await conn.execute(
-                    """
-                    INSERT INTO connections (
-                        connecion_id,  -- e'tibor: ataylab shu nom
-                        sender_id,
-                        recipient_id,
-                        created_at,
-                        updated_at
-                    )
-                    VALUES ($1, $2, $3, NOW(), NOW())
-                    """,
-                    order_id, jm_id, controller_id
-                )
+                VALUES ($1,$2,$3,$4::connection_order_status,$5::connection_order_status,NOW(),NOW())
+            """, order_id, jm_id, controller_id, old_status, new_status)
 
             return True
     finally:

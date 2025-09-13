@@ -78,6 +78,7 @@ class TechnicianApplication(BaseModel):
     longitude: Optional[float] = None
     latitude: Optional[float] = None
     description: Optional[str] = None
+    description_ish: Optional[str] = None
     status: Dict[str, str] = field(
         default_factory=lambda: {
             "in_controller": "Controller Assigned",
@@ -103,8 +104,7 @@ class SaffApplication(BaseModel):
     description: Optional[str] = None
     status: Dict[str, str] = field(
         default_factory=lambda: {
-            "in_manager": "Manager Assigned",
-            "in_junior_manager": "Junior Manager Assigned",
+            "in_call_center_supervisor": "Call Center Supervisor Assigned",
             "in_controller": "Controller Assigned",
             "in_technician": "Technician Assigned",
             "in_technician_work": "Technician Working",
@@ -122,9 +122,10 @@ class SaffApplication(BaseModel):
 @dataclass
 class Connection(BaseModel):
     id: Optional[int] = None
-    user_id: Optional[int] = None
     sender_id: Optional[int] = None
+    sender_status: Optional[str] = None
     recipient_id: Optional[int] = None
+    recipient_status: Optional[str] = None
     connecion_id: Optional[int] = None
     technician_id: Optional[int] = None
     saff_id: Optional[int] = None
@@ -147,3 +148,10 @@ class MaterialRequests(BaseModel):
     user_id: Optional[int] = None
     applications_id: Optional[int] = None
     material_id: Optional[int] = None
+
+@dataclass
+class MaterialAndTechnican(BaseModel):
+    id: Optional[int] = None
+    user_id: Optional[int] = None
+    material_id: Optional[int] = None
+    quantity: Optional[int] = None
