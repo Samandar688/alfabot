@@ -78,6 +78,7 @@ class TechnicianApplication(BaseModel):
     longitude: Optional[float] = None
     latitude: Optional[float] = None
     description: Optional[str] = None
+    description_ish: Optional[str] = None
     status: Dict[str, str] = field(
         default_factory=lambda: {
             "in_controller": "Controller Assigned",

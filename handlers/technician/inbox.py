@@ -12,26 +12,55 @@ import html
 from filters.role_filter import RoleFilter
 from database.queries import find_user_by_telegram_id
 from database.technician_queries import (
+    # Ulanish (connection_orders) oqimi
     fetch_technician_inbox,
     cancel_technician_request,
     accept_technician_work,
     start_technician_work,
-    fetch_technician_materials,
     finish_technician_work,
     fetch_selected_materials_for_request,
+
+    # Material oqimi (ikkala rejimda ham ishlatiladi)
+    fetch_technician_materials,
     fetch_material_by_id,
     fetch_assigned_qty,
     upsert_material_request_and_decrease_stock,
+
+    # Texnik xizmat (technician_orders) oqimi
+    fetch_technician_inbox_tech,
+    accept_technician_work_for_tech,
+    start_technician_work_for_tech,
+    save_technician_diagnosis,
+    finish_technician_work_for_tech,
 )
 
+# ====== STATE-lar ======
 class QtyStates(StatesGroup):
     waiting_qty = State()
 
+class DiagStates(StatesGroup):
+    waiting_text = State()
+
+# ====== Router ======
 router = Router()
 router.message.filter(RoleFilter("technician"))
 router.callback_query.filter(RoleFilter("technician"))
 
-# ---------- yordamchilar ----------
+# tech_mode'ni yo'qotmasdan FSM datani tozalash
+async def _preserve_mode_clear(state: FSMContext, keep_keys: list[str] | None = None):
+    data = await state.get_data()
+    mode = data.get("tech_mode")
+    kept: dict = {}
+    if keep_keys:
+        for k in keep_keys:
+            if k in data:
+                kept[k] = data[k]
+    await state.clear()
+    payload = {"tech_mode": mode}
+    payload.update(kept)
+    await state.update_data(**payload)
+
+# ====== Yordamchi funksiyalar ======
 def fmt_dt(dt) -> str:
     if isinstance(dt, str):
         try:
@@ -50,10 +79,9 @@ def status_emoji(s: str) -> str:
         "between_controller_technician": "🆕",
         "in_technician": "🧰",
         "in_technician_work": "🟢",
-        "completed": "✅",   # <— add this
+        "completed": "✅",
     }
     return m.get(s, "📌")
-
 
 def short_view_text(item: dict, idx: int, total: int) -> str:
     return (
@@ -68,7 +96,12 @@ def short_view_text(item: dict, idx: int, total: int) -> str:
         f"🗂️ <i>Ariza {idx + 1} / {total}</i>"
     )
 
-def action_keyboard(item_id: int, index: int, total: int, status: str) -> InlineKeyboardMarkup:
+def action_keyboard(item_id: int, index: int, total: int, status: str, mode: str = "connection") -> InlineKeyboardMarkup:
+    """
+    mode:
+      - "connection"  -> ulanish arizalari (ombor darhol)
+      - "technician"  -> texnik xizmat arizalari (diagnostika -> keyin ombor)
+    """
     rows = []
 
     # Navigatsiya
@@ -91,6 +124,10 @@ def action_keyboard(item_id: int, index: int, total: int, status: str) -> Inline
         rows.append([
             InlineKeyboardButton(text="▶️ Ishni boshlash", callback_data=f"tech_start_{item_id}")
         ])
+    elif status == "in_technician_work" and mode == "technician":
+        rows.append([
+            InlineKeyboardButton(text="🩺 Diagnostika", callback_data=f"tech_diag_begin_{item_id}")
+        ])
 
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -104,6 +141,13 @@ def _dedup_by_id(items: list[dict]) -> list[dict]:
         seen.add(i)
         out.append(it)
     return out
+
+def tech_category_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔌 Ulanish arizalari",       callback_data="tech_inbox_cat_connection")],
+        [InlineKeyboardButton(text="🔧 Texnik xizmat arizalari", callback_data="tech_inbox_cat_tech")],
+        [InlineKeyboardButton(text="📞 Operator arizalari",      callback_data="tech_inbox_cat_operator")],
+    ])
 
 async def _safe_edit(message, text: str, kb: InlineKeyboardMarkup):
     try:
@@ -137,120 +181,148 @@ def materials_keyboard(materials: list[dict], applications_id: int) -> InlineKey
                 text=title[:64],
                 callback_data=f"tech_mat_select_{mat.get('material_id')}_{applications_id}"
             )])
-    # Maxsus tugmalar
     rows.append([InlineKeyboardButton(text="➕ Boshqa mahsulot", callback_data=f"tech_mat_custom_{applications_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
-# ---------- Inbox ochish ----------
+def _guard_connection_mode(data: dict) -> bool:
+    return data.get("tech_mode", "connection") == "connection"
+
+# ====== Inbox ochish: avval kategoriya ======
 @router.message(F.text.in_(["📥 Inbox", "Inbox"]))
 async def tech_open_inbox(message: Message, state: FSMContext):
     user = await find_user_by_telegram_id(message.from_user.id)
     if not user or user.get("role") != "technician":
         return
+    await state.update_data(tech_mode=None, tech_inbox=[], tech_idx=0)
+    await message.answer("📂 Qaysi bo‘limni ko‘ramiz?", reply_markup=tech_category_keyboard())
 
-    tech_id = user["id"]
-    items = await fetch_technician_inbox(technician_id=tech_id, limit=50, offset=0)
-    items = _dedup_by_id(items)
+# ====== Kategoriya handlerlari ======
+@router.callback_query(F.data == "tech_inbox_cat_connection")
+async def tech_cat_connection(cb: CallbackQuery, state: FSMContext):
+    await cb.answer()
+    user = await find_user_by_telegram_id(cb.from_user.id)
+    if not user or user.get("role") != "technician":
+        return await cb.answer("❌ Ruxsat yo‘q", show_alert=True)
+
+    items = _dedup_by_id(await fetch_technician_inbox(technician_id=user["id"], limit=50, offset=0))
+    await state.update_data(tech_mode="connection", tech_inbox=items, tech_idx=0)
 
     if not items:
-        await message.answer("📭 Inbox bo‘sh")
-        return
+        return await cb.message.edit_text("📭 Ulanish arizalari bo‘sh")
 
-    total = len(items)
-    await state.update_data(tech_inbox=items, tech_idx=0)
-
-    item = items[0]
+    item = items[0]; total = len(items)
     text = short_view_text(item, 0, total)
-    kb = action_keyboard(item.get("id"), 0, total, item.get("status", ""))
-    await message.answer(text, reply_markup=kb, parse_mode="HTML")
+    kb = action_keyboard(item.get("id"), 0, total, item.get("status", ""), mode="connection")
+    await cb.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
 
-# ---------- Oldingi / Keyingi ----------
+@router.callback_query(F.data == "tech_inbox_cat_tech")
+async def tech_cat_tech(cb: CallbackQuery, state: FSMContext):
+    await cb.answer()
+    user = await find_user_by_telegram_id(cb.from_user.id)
+    if not user or user.get("role") != "technician":
+        return await cb.answer("❌ Ruxsat yo‘q", show_alert=True)
+
+    items = _dedup_by_id(await fetch_technician_inbox_tech(technician_id=user["id"], limit=50, offset=0))
+    await state.update_data(tech_mode="technician", tech_inbox=items, tech_idx=0)
+
+    if not items:
+        return await cb.message.edit_text("📭 Texnik xizmat arizalari bo‘sh")
+
+    item = items[0]; total = len(items)
+    text = short_view_text(item, 0, total)
+    kb = action_keyboard(item.get("id"), 0, total, item.get("status", ""), mode="technician")
+    await cb.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+
+@router.callback_query(F.data == "tech_inbox_cat_operator")
+async def tech_cat_operator(cb: CallbackQuery, state: FSMContext):
+    await cb.answer()
+    await cb.message.edit_text(
+        "📞 Operator arizalari bo‘limi keyingi bosqichda ulanadi.",
+        reply_markup=tech_category_keyboard()
+    )
+
+# ====== Navigatsiya (prev/next) ======
 @router.callback_query(F.data.startswith("tech_inbox_prev_"))
 async def tech_prev(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
     data = await state.get_data()
+    mode = data.get("tech_mode", "connection")
     items = _dedup_by_id(data.get("tech_inbox", []))
     if not items:
         return
     total = len(items)
-    idx_now = int(cb.data.replace("tech_inbox_prev_", ""))
-    idx = idx_now - 1
+    idx = int(cb.data.replace("tech_inbox_prev_", "")) - 1
     if idx < 0 or idx >= total:
         return
-
     await state.update_data(tech_inbox=items, tech_idx=idx)
     item = items[idx]
     text = short_view_text(item, idx, total)
-    kb = action_keyboard(item.get("id"), idx, total, item.get("status", ""))
+    kb = action_keyboard(item.get("id"), idx, total, item.get("status", ""), mode=mode)
     await _safe_edit(cb.message, text, kb)
 
 @router.callback_query(F.data.startswith("tech_inbox_next_"))
 async def tech_next(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
     data = await state.get_data()
+    mode = data.get("tech_mode", "connection")
     items = _dedup_by_id(data.get("tech_inbox", []))
     if not items:
         return
     total = len(items)
-    idx_now = int(cb.data.replace("tech_inbox_next_", ""))
-    idx = idx_now + 1
+    idx = int(cb.data.replace("tech_inbox_next_", "")) + 1
     if idx < 0 or idx >= total:
         return
-
     await state.update_data(tech_inbox=items, tech_idx=idx)
     item = items[idx]
     text = short_view_text(item, idx, total)
-    kb = action_keyboard(item.get("id"), idx, total, item.get("status", ""))
+    kb = action_keyboard(item.get("id"), idx, total, item.get("status", ""), mode=mode)
     await _safe_edit(cb.message, text, kb)
 
-# ---------- Ishni qabul qilish ----------
+# ====== Qabul qilish / Bekor qilish / Boshlash ======
 @router.callback_query(F.data.startswith("tech_accept_"))
 async def tech_accept(cb: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    mode = data.get("tech_mode", "connection")
+
     user = await find_user_by_telegram_id(cb.from_user.id)
     if not user or user.get("role") != "technician":
         return await cb.answer("❌ Ruxsat yo‘q", show_alert=True)
 
     req_id = int(cb.data.replace("tech_accept_", ""))
-
-    # 1) DB
     try:
-        ok = await accept_technician_work(applications_id=req_id, technician_id=user["id"])
+        if mode == "technician":
+            ok = await accept_technician_work_for_tech(applications_id=req_id, technician_id=user["id"])
+        else:
+            ok = await accept_technician_work(applications_id=req_id, technician_id=user["id"])
         if not ok:
             return await cb.answer("⚠️ Holat mos emas yoki ariza topilmadi.", show_alert=True)
     except Exception as e:
         return await cb.answer(f"❌ Xatolik: {e}", show_alert=True)
 
-    # 2) Lokal yangilash
-    data = await state.get_data()
-    items = _dedup_by_id(data.get("tech_inbox", []))
-    idx = int(data.get("tech_idx", 0))
-
-    current = None
-    if 0 <= idx < len(items) and items[idx].get("id") == req_id:
-        items[idx]["status"] = "in_technician"
-        current = items[idx]
-    else:
-        for it in items:
-            if it.get("id") == req_id:
-                it["status"] = "in_technician"
-                current = it
-                break
-
+    # Karta ichida tugma yangilanadi
+    st = await state.get_data()
+    items = _dedup_by_id(st.get("tech_inbox", []))
+    idx = int(st.get("tech_idx", 0))
+    for it in items:
+        if it.get("id") == req_id:
+            it["status"] = "in_technician"
+            break
     await state.update_data(tech_inbox=items)
 
     total = len(items)
-    if idx >= total:
-        idx = total - 1
-    item = items[idx] if current is None else current
+    item = items[idx] if 0 <= idx < total else items[0]
     text = short_view_text(item, idx, total)
-    kb = action_keyboard(item.get("id"), idx, total, item.get("status", ""))
-
+    kb = action_keyboard(item.get("id"), idx, total, item.get("status", ""), mode=mode)
     await _safe_edit(cb.message, text, kb)
-    await cb.answer("✅ Ish qabul qilindi")
+    await cb.answer()  # xabar yubormaymiz
 
-# ---------- Bekor qilish ----------
 @router.callback_query(F.data.startswith("tech_cancel_"))
 async def tech_cancel(cb: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    mode = data.get("tech_mode", "connection")
+    if not _guard_connection_mode(data):
+        return await cb.answer("Bu bo‘limda hozircha amal yo‘q.", show_alert=True)
+
     user = await find_user_by_telegram_id(cb.from_user.id)
     if not user or user.get("role") != "technician":
         return await cb.answer("❌ Ruxsat yo‘q", show_alert=True)
@@ -262,9 +334,9 @@ async def tech_cancel(cb: CallbackQuery, state: FSMContext):
     except Exception as e:
         return await cb.answer(f"❌ Xatolik: {e}", show_alert=True)
 
-    data = await state.get_data()
-    items = _dedup_by_id(data.get("tech_inbox", []))
-    idx = int(data.get("tech_idx", 0))
+    st = await state.get_data()
+    items = _dedup_by_id(st.get("tech_inbox", []))
+    idx = int(st.get("tech_idx", 0))
 
     items = [it for it in items if it.get("id") != req_id]
 
@@ -281,12 +353,14 @@ async def tech_cancel(cb: CallbackQuery, state: FSMContext):
     item = items[idx]
     await cb.answer("🗑️ Ariza bekor qilindi")
     text = short_view_text(item, idx, total)
-    kb = action_keyboard(item.get("id"), idx, total, item.get("status", ""))
+    kb = action_keyboard(item.get("id"), idx, total, item.get("status", ""), mode=mode)
     await _safe_edit(cb.message, text, kb)
 
-# ---------- Ishni boshlash ----------
 @router.callback_query(F.data.startswith("tech_start_"))
 async def tech_start(cb: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    mode = data.get("tech_mode", "connection")
+
     user = await find_user_by_telegram_id(cb.from_user.id)
     if not user or user.get("role") != "technician":
         return await cb.answer("❌ Ruxsat yo‘q", show_alert=True)
@@ -294,77 +368,135 @@ async def tech_start(cb: CallbackQuery, state: FSMContext):
     req_id = int(cb.data.replace("tech_start_", ""))
 
     try:
-        ok = await start_technician_work(applications_id=req_id, technician_id=user["id"])
+        if mode == "technician":
+            ok = await start_technician_work_for_tech(applications_id=req_id, technician_id=user["id"])
+        else:
+            ok = await start_technician_work(applications_id=req_id, technician_id=user["id"])
         if not ok:
             return await cb.answer("⚠️ Holat mos emas (faqat 'in_technician').", show_alert=True)
     except Exception as e:
         return await cb.answer(f"❌ Xatolik: {e}", show_alert=True)
 
-    await cb.answer("✅ Ish boshlandi")
-
-    # STATE tiklash
-    data = await state.get_data()
-    items = _dedup_by_id(data.get("tech_inbox", []))
-    idx = int(data.get("tech_idx", 0))
-
-    if not items:
-        try:
-            items = await fetch_technician_inbox(technician_id=user["id"], limit=50, offset=0)
-            items = _dedup_by_id(items)
-            idx = 0
-        except Exception:
-            items = []
-            idx = 0
-
-    current = None
+    # Lokal status -> in_technician_work
+    st = await state.get_data()
+    items = _dedup_by_id(st.get("tech_inbox", []))
+    idx = int(st.get("tech_idx", 0))
     for it in items:
         if it.get("id") == req_id:
             it["status"] = "in_technician_work"
-            current = it
             break
+    await state.update_data(tech_inbox=items)
 
     total = len(items)
-    if total > 0:
-        if idx < 0 or idx >= total:
-            idx = 0
-        await state.update_data(tech_inbox=items, tech_idx=idx)
+    item = items[idx] if 0 <= idx < total else items[0]
+    text = short_view_text(item, idx, total)
+    kb = action_keyboard(item.get("id"), idx, total, item.get("status", ""), mode=mode)
+    await _safe_edit(cb.message, text, kb)
 
-        item_to_show = current or items[idx]
-        text = short_view_text(item_to_show, idx, total)
-        kb = action_keyboard(item_to_show.get("id"), idx, total, item_to_show.get("status", ""))
-        try:
-            await _safe_edit(cb.message, text, kb)
-        except Exception:
-            await cb.message.answer(text, reply_markup=kb, parse_mode="HTML")
-    else:
-        await state.update_data(tech_inbox=[], tech_idx=0)
-        await cb.message.answer("ℹ️ Inbox ro‘yxati yangilandi yoki bo‘sh. Davom etamiz.", parse_mode="HTML")
-
-    # Materiallar menyusi
-    mats = await fetch_technician_materials(user_id=user["id"])
-    header_text = "📦 <b>Ombor jihozlari</b>\n" \
-                  f"🆔 <b>Ariza ID:</b> {req_id}\n" \
-                  "Kerakli jihozlarni tanlang yoki boshqa mahsulot kiriting:"
-    if not mats:
+    if mode == "technician":
+        # 👉 Texnik xizmat: DIAGNOSTIKA (ombor keyin!)
+        diag_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🩺 Diagnostika boshlash", callback_data=f"tech_diag_begin_{req_id}")]
+        ])
         await cb.message.answer(
-            header_text + "\n\nℹ️ Hozircha sizga biriktirilgan jihozlar topilmadi.",
-            reply_markup=materials_keyboard([], applications_id=req_id),
-            parse_mode="HTML"
+            "🟢 Ish boshlandi.\n\n🩺 Endi diagnostika qo‘yishingiz kerak.",
+            reply_markup=diag_kb
         )
-    else:
-        info_lines = ["\n<b>Sizga biriktirilgan materiallar:</b>"]
-        for i, m in enumerate(mats, 1):
-            info_lines.append(
-                f"{i}) {esc(m['name'])} — {_fmt_price_uzs(m['price'])} so'm"
-                f" | S/N: {esc(m.get('serial_number') or '-')} | Biriktirilgan: {m['stock_quantity']} dona"
-            )
-        await cb.message.answer("\n".join([header_text, *info_lines]), parse_mode="HTML",
-                                reply_markup=materials_keyboard(mats, applications_id=req_id))
+        await cb.answer("✅ Ish boshlandi")
+        return  # omborni bu yerda chiqarmaymiz!
 
-# ---------- Material tanlash ----------
+    # 👉 Ulanish rejimi: darhol ombor
+    mats = await fetch_technician_materials(user_id=user["id"])
+    header_text = (
+        "📦 <b>Ombor jihozlari</b>\n"
+        f"🆔 <b>Ariza ID:</b> {req_id}\n"
+        "Kerakli jihozlarni tanlang yoki boshqa mahsulot kiriting:"
+    )
+    await cb.message.answer(header_text, reply_markup=materials_keyboard(mats, applications_id=req_id), parse_mode="HTML")
+
+# ====== DIAGNOSTIKA ======
+@router.callback_query(F.data.startswith("tech_diag_begin_"))
+async def tech_diag_begin(cb: CallbackQuery, state: FSMContext):
+    await cb.answer()
+    try:
+        req_id = int(cb.data.replace("tech_diag_begin_", ""))
+    except Exception:
+        return
+    await state.update_data(diag_req_id=req_id)
+    await cb.message.answer(
+        "🩺 <b>Diagnostika matnini kiriting</b>\n\n"
+        "Masalan: <i>Modem moslamasi ishdan chiqqan</i>.",
+        parse_mode="HTML"
+    )
+    await state.set_state(DiagStates.waiting_text)
+
+@router.message(StateFilter(DiagStates.waiting_text))
+async def tech_diag_text(msg: Message, state: FSMContext):
+    user = await find_user_by_telegram_id(msg.from_user.id)
+    if not user or user.get("role") != "technician":
+        return await msg.answer("❌ Ruxsat yo‘q")
+
+    data = await state.get_data()
+    req_id = int(data.get("diag_req_id", 0))
+    if req_id <= 0:
+        await _preserve_mode_clear(state)
+        return await msg.answer("❗️ Ariza aniqlanmadi.")
+
+    text = (msg.text or "").strip()
+    if not text:
+        return await msg.answer("❗️ Bo‘sh matn yuborilmadi. Diagnostikani qayta kiriting.")
+
+    try:
+        await save_technician_diagnosis(applications_id=req_id, technician_id=user["id"], text=text)
+    except Exception as e:
+        await _preserve_mode_clear(state)
+        return await msg.answer(f"❌ Diagnostika yozishda xato: {e}")
+
+    # FSM'ni tozalaymiz, lekin tech_mode saqlansin
+    await _preserve_mode_clear(state)
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Ha",  callback_data=f"tech_diag_go_store_{req_id}")],
+        [InlineKeyboardButton(text="❌ Yo‘q", callback_data=f"tech_diag_cancel_{req_id}")],
+    ])
+    await msg.answer(
+        "✅ <b>Diagnostika qo‘yildi!</b>\n\n"
+        f"🆔 <b>Ariza ID:</b> {esc(req_id)}\n"
+        f"🧰 <b>Diagnostika:</b>\n<code>{html.escape(text, quote=False)}</code>\n\n"
+        "🧑‍🏭 <b>Ombor bilan ishlaysizmi?</b>\n"
+        "<i>Agar kerakli jihozlar omborda bo‘lsa, ularni olish kerak.</i>",
+        reply_markup=kb,
+        parse_mode="HTML"
+    )
+
+@router.callback_query(F.data.startswith("tech_diag_go_store_"))
+async def tech_diag_go_store(cb: CallbackQuery, state: FSMContext):
+    await cb.answer()
+    try:
+        req_id = int(cb.data.replace("tech_diag_go_store_", ""))
+    except Exception:
+        return
+
+    user = await find_user_by_telegram_id(cb.from_user.id)
+    if not user or user.get("role") != "technician":
+        return await cb.answer("❌ Ruxsat yo‘q", show_alert=True)
+
+    mats = await fetch_technician_materials(user_id=user["id"])
+    header_text = (
+        "📦 <b>Ombor jihozlari</b>\n"
+        f"🆔 <b>Ariza ID:</b> {req_id}\n"
+        "Kerakli jihozlarni tanlang yoki boshqa mahsulot kiriting:"
+    )
+    await cb.message.answer(header_text, reply_markup=materials_keyboard(mats, applications_id=req_id), parse_mode="HTML")
+
+@router.callback_query(F.data.startswith("tech_diag_cancel_"))
+async def tech_diag_cancel(cb: CallbackQuery, state: FSMContext):
+    await cb.answer("Bekor qilindi")
+    await cb.message.answer("ℹ️ Omborga murojaat qilinmadi. Davom etishingiz mumkin.")
+
+# ====== Materiallar oqimi ======
 @router.callback_query(F.data.startswith("tech_mat_select_"))
 async def tech_mat_select(cb: CallbackQuery, state: FSMContext):
-    # format: tech_mat_select_{material_id}_{applications_id}
     try:
         payload = cb.data[len("tech_mat_select_"):]
         material_id, req_id = map(int, payload.split("_", 1))
@@ -409,7 +541,6 @@ async def tech_mat_select(cb: CallbackQuery, state: FSMContext):
     await state.set_state(QtyStates.waiting_qty)
     await cb.answer()
 
-# ---------- Miqdorni kiritish ----------
 @router.callback_query(F.data.startswith("tech_qty_cancel_"))
 async def tech_qty_cancel(cb: CallbackQuery, state: FSMContext):
     try:
@@ -428,7 +559,7 @@ async def tech_qty_cancel(cb: CallbackQuery, state: FSMContext):
         "Kerakli jihozlarni tanlang yoki boshqa mahsulot kiriting:"
     )
     await cb.message.answer(header_text, reply_markup=materials_keyboard(mats, applications_id=req_id), parse_mode="HTML")
-    await state.clear()
+    await _preserve_mode_clear(state)   # <-- tech_mode saqlansin
     await cb.answer("Bekor qilindi")
 
 @router.message(StateFilter(QtyStates.waiting_qty))
@@ -443,9 +574,8 @@ async def tech_qty_entered(msg: Message, state: FSMContext):
     material_id = int(ctx.get("material_id", 0))
     max_qty = int(ctx.get("max_qty", 0))
 
-    # Raqam tekshiruvi
     try:
-        qty = int(msg.text.strip())
+        qty = int((msg.text or "").strip())
         if qty <= 0:
             return await msg.answer("❗️ Iltimos, 0 dan katta butun son kiriting.")
     except Exception:
@@ -454,7 +584,6 @@ async def tech_qty_entered(msg: Message, state: FSMContext):
     if qty > max_qty:
         return await msg.answer(f"❗️ Sizga biriktirilgan miqdor: {max_qty} dona. {max_qty} dan oshiq kiritib bo‘lmaydi.")
 
-    # UPSERT + texnik qoldiqdan ayirish (tranzaksiya)
     try:
         await upsert_material_request_and_decrease_stock(
             user_id=user["id"],
@@ -467,7 +596,6 @@ async def tech_qty_entered(msg: Message, state: FSMContext):
     except Exception as e:
         return await msg.answer(f"❌ Xatolik: {e}")
 
-    # Xulosa
     selected = await fetch_selected_materials_for_request(user["id"], req_id)
     lines = [
         "✅ <b>Tanlov saqlandi</b>\n",
@@ -484,9 +612,8 @@ async def tech_qty_entered(msg: Message, state: FSMContext):
         [InlineKeyboardButton(text="📋 Yakuniy ko‘rinish", callback_data=f"tech_review_{req_id}")]
     ])
     await msg.answer(text, reply_markup=kb, parse_mode="HTML")
-    await state.clear()
+    await _preserve_mode_clear(state)   # <-- tech_mode saqlansin
 
-# ---------- Review / Back / Finish ----------
 @router.callback_query(F.data.startswith("tech_back_to_materials_"))
 async def tech_back_to_materials(cb: CallbackQuery, state: FSMContext):
     try:
@@ -518,12 +645,18 @@ async def tech_finish(cb: CallbackQuery, state: FSMContext):
     if not user or user.get("role") != "technician":
         return await cb.answer("❌ Ruxsat yo‘q", show_alert=True)
 
+    st = await state.get_data()
+    mode = st.get("tech_mode", "connection")
+
     selected = await fetch_selected_materials_for_request(user["id"], req_id)
     if not selected:
         return await cb.answer("⚠️ Avval hech bo‘lmasa bitta material tanlang.", show_alert=True)
 
     try:
-        ok = await finish_technician_work(applications_id=req_id, technician_id=user["id"])
+        if mode == "technician":
+            ok = await finish_technician_work_for_tech(applications_id=req_id, technician_id=user["id"])
+        else:
+            ok = await finish_technician_work(applications_id=req_id, technician_id=user["id"])
         if not ok:
             return await cb.answer("⚠️ Holat mos emas (faqat 'in_technician_work').", show_alert=True)
     except Exception as e:
@@ -537,9 +670,7 @@ async def tech_finish(cb: CallbackQuery, state: FSMContext):
     for it in selected:
         qty_txt = f"{it.get('description')} dona" if it.get('description') is not None else "-"
         lines.append(f"• {esc(it['name'])} — {qty_txt}")
-    text = "\n".join(lines)
-
-    await cb.message.answer(text, parse_mode="HTML")
+    await cb.message.answer("\n".join(lines), parse_mode="HTML")
     await cb.answer("Yakunlandi ✅")
 
 @router.callback_query(F.data.startswith("tech_add_more_"))
