@@ -169,7 +169,7 @@ def analyze_project_requirements(conn=None):
     else:
         # Fallback to expected tables based on migrations
         expected_tables = [
-            "users", "tarifs", "connection_orders", "technician_orders",
+            "users", "tarif", "connection_orders", "technician_orders",
             "saff_orders", "materials", "material_requests",
             "regions", "user_sessions", "audit_logs"
         ]
