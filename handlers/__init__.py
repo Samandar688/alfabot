@@ -3,6 +3,7 @@ from aiogram import Router
 
 from . import (
     start_handler,
+    client_rating,  # Bu qatorni qo'shing
     # 1) Ombor router(lar)i admin'dan OLDIN turishi kerak
     warehouse,
     # agar inventarizatsiya alohida fayl bo'lsa, uni ham qo'shing:
@@ -22,6 +23,7 @@ router = Router()
 
 router.include_routers(
     start_handler.router,
+    client_rating.router,  # Bu qatorni qo'shing
 
     # Omborni oldin ulaymiz
     warehouse.router,

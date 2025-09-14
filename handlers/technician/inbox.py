@@ -32,6 +32,12 @@ from database.technician_queries import (
     start_technician_work_for_tech,
     save_technician_diagnosis,
     finish_technician_work_for_tech,
+    
+    # Xodim arizalari (saff_orders) oqimi
+    fetch_technician_inbox_saff,
+    accept_technician_work_for_saff,
+    start_technician_work_for_saff,
+    finish_technician_work_for_saff,
 )
 
 # ====== STATE-lar ======
@@ -236,10 +242,20 @@ async def tech_cat_tech(cb: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "tech_inbox_cat_operator")
 async def tech_cat_operator(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
-    await cb.message.edit_text(
-        "📞 Operator arizalari bo‘limi keyingi bosqichda ulanadi.",
-        reply_markup=tech_category_keyboard()
-    )
+    user = await find_user_by_telegram_id(cb.from_user.id)
+    if not user or user.get("role") != "technician":
+        return await cb.answer("❌ Ruxsat yo'q", show_alert=True)
+
+    items = _dedup_by_id(await fetch_technician_inbox_saff(technician_id=user["id"], limit=50, offset=0))
+    await state.update_data(tech_mode="saff", tech_inbox=items, tech_idx=0)
+
+    if not items:
+        return await cb.message.edit_text("📭 Xodim arizalari bo'sh")
+
+    item = items[0]; total = len(items)
+    text = short_view_text(item, 0, total)
+    kb = action_keyboard(item.get("id"), 0, total, item.get("status", ""), mode="saff")
+    await cb.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
 
 # ====== Navigatsiya (prev/next) ======
 @router.callback_query(F.data.startswith("tech_inbox_prev_"))
@@ -655,8 +671,13 @@ async def tech_finish(cb: CallbackQuery, state: FSMContext):
     try:
         if mode == "technician":
             ok = await finish_technician_work_for_tech(applications_id=req_id, technician_id=user["id"])
+            request_type = "technician"
+        elif mode == "saff":
+            ok = await finish_technician_work_for_saff(applications_id=req_id, technician_id=user["id"])
+            request_type = "saff"
         else:
             ok = await finish_technician_work(applications_id=req_id, technician_id=user["id"])
+            request_type = "connection"
         if not ok:
             return await cb.answer("⚠️ Holat mos emas (faqat 'in_technician_work').", show_alert=True)
     except Exception as e:
@@ -672,6 +693,16 @@ async def tech_finish(cb: CallbackQuery, state: FSMContext):
         lines.append(f"• {esc(it['name'])} — {qty_txt}")
     await cb.message.answer("\n".join(lines), parse_mode="HTML")
     await cb.answer("Yakunlandi ✅")
+    
+    # AKT yaratish va yuborish (yangi qo'shilgan)
+    try:
+        from utils.akt_service import AKTService
+        akt_service = AKTService()
+        await akt_service.post_completion_pipeline(cb.bot, req_id, request_type)
+        print(f"AKT pipeline started for {request_type} request {req_id}")
+    except Exception as e:
+        print(f"Error starting AKT pipeline: {e}")
+        # AKT xatoligi ishni to'xtatmaydi
 
 @router.callback_query(F.data.startswith("tech_add_more_"))
 async def tech_add_more(cb: CallbackQuery, state: FSMContext):

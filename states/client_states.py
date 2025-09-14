@@ -36,3 +36,7 @@ class SmartServiceStates(StatesGroup):
     asking_for_location = State()
     waiting_for_location = State()
     confirming_order = State()
+
+class RatingStates(StatesGroup):
+    """Rating states for client"""
+    waiting_for_comment = State()

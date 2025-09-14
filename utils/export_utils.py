@@ -1,8 +1,12 @@
 import csv
 import io
+import logging
 from typing import List, Dict, Any
 from datetime import datetime
 import asyncio
+
+# Set up logger
+logger = logging.getLogger(__name__)
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill
 from reportlab.lib.pagesizes import letter, A4
@@ -36,6 +40,18 @@ class ExportUtils:
     @staticmethod
     def generate_excel(data: List[Dict[str, Any]], sheet_name: str = "Data", title: str = None) -> io.BytesIO:
         """Generate Excel format from data"""
+        from datetime import datetime
+        
+        # Create a deep copy of the data to avoid modifying the original
+        import copy
+        data = copy.deepcopy(data)
+        
+        # Convert timezone-aware datetime objects to timezone-naive
+        for row in data:
+            for key, value in row.items():
+                if isinstance(value, datetime) and value.tzinfo is not None:
+                    row[key] = value.replace(tzinfo=None)
+        
         wb = Workbook()
         ws = wb.active
         ws.title = sheet_name
@@ -72,8 +88,8 @@ class ExportUtils:
             for col_num in range(1, len(headers) + 1):
                 max_length = 0
                 
-                # Check header length
-                header_length = len(str(headers[col_num - 1]))
+                header = str(headers[col_num - 1])
+                header_length = len(header)
                 if header_length > max_length:
                     max_length = header_length
                 
@@ -82,17 +98,27 @@ class ExportUtils:
                     try:
                         cell_value = ws.cell(row=row_num, column=col_num).value
                         if cell_value is not None:
-                            cell_length = len(str(cell_value))
+                            cell_str = str(cell_value)
+                            # Skip very long content to prevent performance issues
+                            if len(cell_str) > 1000:
+                                cell_str = cell_str[:1000] + '...'
+                            cell_length = len(cell_str)
                             if cell_length > max_length:
-                                max_length = cell_length
-                    except:
+                                max_length = min(cell_length, 100)  # Limit max width
+                    except Exception as e:
+                        # Skip any problematic cells
                         continue
                 
-                # Set column width
-                adjusted_width = min(max_length + 2, 50)
-                column_letter = chr(64 + col_num)  # Convert to letter (A, B, C, etc.)
-                ws.column_dimensions[column_letter].width = adjusted_width
-        
+                # Set column width with safe column letter
+                try:
+                    from openpyxl.utils import get_column_letter
+                    column_letter = get_column_letter(col_num)
+                    # Set reasonable width limits (between 10 and 50)
+                    adjusted_width = min(max(max_length + 2, 10), 50)
+                    ws.column_dimensions[column_letter].width = adjusted_width
+                except Exception as e:
+                    # If we can't set the width, just continue
+                    pass        
         output = io.BytesIO()
         wb.save(output)
         output.seek(0)
@@ -230,3 +256,101 @@ class ExportUtils:
             formatted_data.append(formatted_item)
         
         return formatted_data
+    
+    def generate_orders_export(self, orders_data: List[Dict[str, Any]], format_type: str, title: str) -> bytes:
+        """Generate export file for orders data"""
+        try:
+            if format_type == "csv":
+                csv_output = self.generate_csv(orders_data)
+                return csv_output.getvalue().encode('utf-8')
+            elif format_type == "xlsx":
+                excel_output = self.generate_excel(orders_data, "Orders", title)
+                return excel_output.getvalue()
+            elif format_type == "docx":
+                word_output = self.generate_word(orders_data, title)
+                return word_output.getvalue()
+            elif format_type == "pdf":
+                pdf_output = self.generate_pdf(orders_data, title)
+                return pdf_output.getvalue()
+            else:
+                return None
+        except Exception as e:
+            print(f"Export generation error: {e}")
+            return None
+    
+    def generate_statistics_export(self, stats_data: Dict[str, Any], format_type: str, title: str) -> bytes:
+        """Generate export file for statistics data"""
+        try:
+            # Convert statistics to list format for export
+            stats_list = []
+            
+            # Basic statistics
+            stats_list.append({
+                'Parametr': 'Jami arizalar',
+                'Qiymat': stats_data.get('total_orders', 0)
+            })
+            stats_list.append({
+                'Parametr': 'Kutilayotgan arizalar',
+                'Qiymat': stats_data.get('pending_orders', 0)
+            })
+            stats_list.append({
+                'Parametr': 'Jarayondagi arizalar',
+                'Qiymat': stats_data.get('in_progress_orders', 0)
+            })
+            stats_list.append({
+                'Parametr': 'Yakunlangan arizalar',
+                'Qiymat': stats_data.get('completed_orders', 0)
+            })
+            stats_list.append({
+                'Parametr': 'Bekor qilingan arizalar',
+                'Qiymat': stats_data.get('cancelled_orders', 0)
+            })
+            stats_list.append({
+                'Parametr': 'Tayinlangan arizalar',
+                'Qiymat': stats_data.get('assigned_orders', 0)
+            })
+            stats_list.append({
+                'Parametr': 'Tayinlanmagan arizalar',
+                'Qiymat': stats_data.get('unassigned_orders', 0)
+            })
+            
+            # Add region statistics
+            region_stats = stats_data.get('region_stats', [])
+            if region_stats:
+                stats_list.append({'Parametr': '', 'Qiymat': ''})  # Empty row
+                stats_list.append({'Parametr': 'HUDUDLAR BO\'YICHA', 'Qiymat': ''})
+                for region in region_stats:
+                    stats_list.append({
+                        'Parametr': f"  {region['region']}",
+                        'Qiymat': region['count']
+                    })
+            
+            # Add tariff statistics
+            tariff_stats = stats_data.get('tariff_stats', [])
+            if tariff_stats:
+                stats_list.append({'Parametr': '', 'Qiymat': ''})  # Empty row
+                stats_list.append({'Parametr': 'TARIFLAR BO\'YICHA', 'Qiymat': ''})
+                for tariff in tariff_stats:
+                    stats_list.append({
+                        'Parametr': f"  {tariff['tariff']}",
+                        'Qiymat': tariff['count']
+                    })
+            
+            # Generate export using the same methods as orders
+            if format_type == "csv":
+                csv_output = self.generate_csv(stats_list)
+                return csv_output.getvalue().encode('utf-8')
+            elif format_type == "xlsx":
+                excel_output = self.generate_excel(stats_list, "Statistics", title)
+                return excel_output.getvalue()
+            elif format_type == "docx":
+                word_output = self.generate_word(stats_list, title)
+                return word_output.getvalue()
+            elif format_type == "pdf":
+                pdf_output = self.generate_pdf(stats_list, title)
+                return pdf_output.getvalue()
+            else:
+                return None
+        except Exception as e:
+            print(f"Statistics export generation error: {e}")
+            return None
