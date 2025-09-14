@@ -268,3 +268,35 @@ def get_smart_service_confirmation_keyboard(lang="uz"):
         ]
     ])
     return keyboard
+
+def get_rating_keyboard(request_id: int, request_type: str) -> InlineKeyboardMarkup:
+    """
+    Reyting keyboard yaratish (1-5 yulduz)
+    """
+    keyboard = []
+    
+    # Yulduzlar qatorlari
+    for i in range(1, 6):
+        stars_text = "⭐" * i
+        keyboard.append([
+            InlineKeyboardButton(
+                text=stars_text,
+                callback_data=f"rate:{request_id}:{request_type}:{i}"
+            )
+        ])
+    
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+def get_skip_comment_keyboard(request_id: int, request_type: str) -> InlineKeyboardMarkup:
+    """
+    Izoh o'tkazib yuborish keyboard
+    """
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="O'tkazib yuborish",
+                callback_data=f"skip_comment:{request_id}:{request_type}"
+            )
+        ]
+    ])
+    return keyboard
