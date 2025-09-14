@@ -25,7 +25,10 @@ from database.manager_application import (
     list_cancelled_orders,
 )
 
+from filters.role_filter import RoleFilter
+
 router = Router()
+<<<<<<< HEAD
 router.message.filter(RoleFilter("manager"))
 router.callback_query.filter(RoleFilter("manager"))
 
@@ -122,6 +125,10 @@ async def _safe_edit(call: CallbackQuery, text: str, kb: InlineKeyboardMarkup):
         await call.message.answer(text, reply_markup=kb)
 
 # ---------------- Kirish (reply tugmadan) ----------------
+=======
+router.message.filter(RoleFilter("Admin"))
+router.callback_query.filter(RoleFilter("Admin"))
+>>>>>>> 327c05a31618b997091abaefeaaf85d47fc33151
 
 @router.message(F.text.in_(["📋 Arizalarni ko'rish", "📋 Все заявки"]))
 async def applications_handler(message: Message, state: FSMContext):

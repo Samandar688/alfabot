@@ -15,3 +15,7 @@ class SaffTechnicianOrderStates(StatesGroup):
     selecting_region = State()
     entering_address = State()
     confirming_connection = State()
+
+class ManagerExportStates(StatesGroup):
+    selecting_export_type = State()
+    selecting_export_format = State()

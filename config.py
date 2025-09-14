@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     DB_URL: str
     BOT_ID: int
     ZAYAVKA_GROUP_ID: Optional[int] = None
+    MANAGER_GROUP_ID: Optional[int] = None
     DB_HOST: str
     DB_PORT: int
     DB_USER: str

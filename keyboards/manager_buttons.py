@@ -54,6 +54,46 @@ def get_operator_tariff_selection_keyboard() -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
+def get_manager_export_types_keyboard(lang: str = 'uz') -> InlineKeyboardMarkup:
+    """Manager export types selection keyboard"""
+    if lang == "uz":
+        keyboard = [
+            [InlineKeyboardButton(text="📋 Arizalar", callback_data="manager_export_orders")],
+            [InlineKeyboardButton(text="📊 Statistika", callback_data="manager_export_statistics")],
+            [InlineKeyboardButton(text="👥 Xodimlar", callback_data="manager_export_employees")],
+            [InlineKeyboardButton(text="📈 Hisobotlar", callback_data="manager_export_reports")],
+            [InlineKeyboardButton(text="🚫 Yopish", callback_data="manager_export_end")]
+        ]
+    else:
+        keyboard = [
+            [InlineKeyboardButton(text="📋 Заказы", callback_data="manager_export_orders")],
+            [InlineKeyboardButton(text="📊 Статистика", callback_data="manager_export_statistics")],
+            [InlineKeyboardButton(text="👥 Сотрудники", callback_data="manager_export_employees")],
+            [InlineKeyboardButton(text="📈 Отчеты", callback_data="manager_export_reports")],
+            [InlineKeyboardButton(text="🚫 Выход", callback_data="manager_export_end")]
+        ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+def get_manager_export_formats_keyboard(lang: str = 'uz') -> InlineKeyboardMarkup:
+    """Manager export formats selection keyboard"""
+    if lang == "uz":
+        keyboard = [
+            [InlineKeyboardButton(text="CSV", callback_data="manager_format_csv")],
+            [InlineKeyboardButton(text="Excel", callback_data="manager_format_xlsx")],
+            [InlineKeyboardButton(text="Word", callback_data="manager_format_docx")],
+            [InlineKeyboardButton(text="PDF", callback_data="manager_format_pdf")],
+            [InlineKeyboardButton(text="◀️ Orqaga", callback_data="manager_export_back_types")]
+        ]
+    else:
+        keyboard = [
+            [InlineKeyboardButton(text="CSV", callback_data="manager_format_csv")],
+            [InlineKeyboardButton(text="Excel", callback_data="manager_format_xlsx")],
+            [InlineKeyboardButton(text="Word", callback_data="manager_format_docx")],
+            [InlineKeyboardButton(text="PDF", callback_data="manager_format_pdf")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="manager_export_back_types")]
+        ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
 def confirmation_keyboard(lang="uz"):
     """Tasdiqlash klaviaturasi - 2 tilda"""
     confirm_text = "✅ Tasdiqlash" if lang == "uz" else "✅ Подтвердить"

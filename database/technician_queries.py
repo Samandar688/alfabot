@@ -663,3 +663,192 @@ async def finish_technician_work_for_tech(applications_id: int, technician_id: i
             return True
     finally:
         await conn.close()
+
+
+# ====== SAFF ORDERS (Xodim arizalari) uchun funksiyalar ======
+
+async def fetch_technician_inbox_saff(
+    technician_id: int,
+    limit: int = 50,
+    offset: int = 0
+) -> List[Dict[str, Any]]:
+    """
+    Saff orders uchun texnikka biriktirilgan ro'yxat
+    """
+    conn = await _conn()
+    try:
+        with conn.transaction():
+            # Saff orders uchun last_conn view yaratish
+            await conn.execute("""
+                CREATE OR REPLACE VIEW last_conn_saff AS
+                WITH ranked_conns AS (
+                    SELECT 
+                        connecion_id, sender_id, recipient_id,
+                        sender_status, recipient_status, technician_id, saff_id,
+                        ROW_NUMBER() OVER (PARTITION BY connecion_id ORDER BY created_at DESC) as rn
+                    FROM connections
+                    WHERE connecion_id IN (SELECT id FROM saff_orders WHERE is_active = true)
+                )
+                SELECT * FROM ranked_conns WHERE rn = 1
+            """)
+            
+            rows = await conn.fetch("""
+                SELECT 
+                    so.id,
+                    so.phone,
+                    so.region,
+                    so.abonent_id,
+                    so.address,
+                    so.description,
+                    so.status,
+                    so.created_at,
+                    u.full_name,
+                    u.telegram_id,
+                    NULL        AS tariff   -- UI mosligi uchun
+                FROM last_conn_saff c
+                JOIN saff_orders so ON so.id = c.connecion_id
+                LEFT JOIN users u ON u.id = so.user_id
+                WHERE
+                    c.rn = 1
+                    AND so.is_active = TRUE
+                    AND so.status IN ('between_controller_technician','in_technician','in_technician_work')
+                    AND c.technician_id = $1
+                ORDER BY so.created_at DESC
+                LIMIT $2 OFFSET $3
+            """, technician_id, limit, offset)
+            
+            return _as_dicts(rows)
+    finally:
+        await conn.close()
+
+async def accept_technician_work_for_saff(applications_id: int, technician_id: int) -> bool:
+    """
+    Saff order uchun texnik ishni qabul qilish
+    """
+    conn = await _conn()
+    try:
+        async with conn.transaction():
+            row_old = await conn.fetchrow(
+                "SELECT status FROM saff_orders WHERE id=$1 FOR UPDATE",
+                applications_id
+            )
+            if not row_old or row_old["status"] != 'between_controller_technician':
+                return False
+
+            row_new = await conn.fetchrow(
+                """
+                UPDATE saff_orders
+                   SET status = 'in_technician',
+                       updated_at = NOW()
+                 WHERE id=$1 AND status='between_controller_technician'
+             RETURNING status
+                """,
+                applications_id
+            )
+            if not row_new:
+                return False
+
+            # Connections jadvaliga yozish
+            await conn.execute(
+                """
+                INSERT INTO connections(
+                    connecion_id, sender_id, recipient_id,
+                    sender_status, recipient_status, technician_id, created_at, updated_at
+                )
+                VALUES ($1, $2, $2, 'in_technician', 'in_technician', $2, NOW(), NOW())
+                """,
+                applications_id, technician_id
+            )
+
+            return True
+    finally:
+        await conn.close()
+
+async def start_technician_work_for_saff(applications_id: int, technician_id: int) -> bool:
+    """
+    Saff order uchun texnik ishni boshlash
+    """
+    conn = await _conn()
+    try:
+        async with conn.transaction():
+            row_old = await conn.fetchrow(
+                "SELECT status FROM saff_orders WHERE id=$1 FOR UPDATE",
+                applications_id
+            )
+            if not row_old or row_old["status"] != 'in_technician':
+                return False
+
+            row_new = await conn.fetchrow(
+                """
+                UPDATE saff_orders
+                   SET status='in_technician_work',
+                       updated_at=NOW()
+                 WHERE id=$1 AND status='in_technician'
+             RETURNING status
+                """,
+                applications_id
+            )
+            if not row_new:
+                return False
+
+            # Connections jadvaliga yozish
+            await conn.execute(
+                """
+                INSERT INTO connections(
+                    connecion_id, sender_id, recipient_id,
+                    sender_status, recipient_status, technician_id, created_at, updated_at
+                )
+                VALUES ($1, $2, $2, 'in_technician_work', 'in_technician_work', $2, NOW(), NOW())
+                """,
+                applications_id, technician_id
+            )
+
+            return True
+    finally:
+        await conn.close()
+
+async def finish_technician_work_for_saff(applications_id: int, technician_id: int) -> bool:
+    """
+    Saff order uchun texnik ishni yakunlash
+    """
+    conn = await _conn()
+    try:
+        async with conn.transaction():
+            row_old = await conn.fetchrow(
+                "SELECT status FROM saff_orders WHERE id=$1 FOR UPDATE",
+                applications_id
+            )
+            if not row_old or row_old["status"] != 'in_technician_work':
+                return False
+
+            row_new = await conn.fetchrow(
+                """
+                UPDATE saff_orders
+                   SET status = 'completed',
+                       updated_at = NOW()
+                 WHERE id = $1 AND status = 'in_technician_work'
+             RETURNING id
+                """,
+                applications_id
+            )
+            if not row_new:
+                return False
+
+            # Connections jadvaliga yozish
+            try:
+                await conn.execute(
+                    """
+                    INSERT INTO connections(
+                        connecion_id, sender_id, recipient_id,
+                        sender_status, recipient_status, technician_id, created_at, updated_at
+                    )
+                    VALUES ($1, $2, $2, 'in_technician_work', 'completed', $2, NOW(), NOW())
+                    """,
+                    applications_id, technician_id
+                )
+            except Exception:
+                pass
+
+            return True
+    finally:
+        await conn.close()

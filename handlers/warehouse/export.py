@@ -11,8 +11,10 @@ from database.warehouse_queries import (
 from utils.export_utils import ExportUtils
 from states.warehouse_states import WarehouseStates
 import logging
+from filters.role_filter import RoleFilter
 
 router = Router()
+router.message.filter(RoleFilter(role="warehouse"))
 logger = logging.getLogger(__name__)
 
 @router.message(F.text.in_(["📤 Export", "📤 Экспорт"]))
