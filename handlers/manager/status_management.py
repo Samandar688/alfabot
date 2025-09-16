@@ -4,8 +4,8 @@ from aiogram.types import Message
 from filters.role_filter import RoleFilter
 
 router = Router()
-router.message.filter(RoleFilter("Admin"))
-router.callback_query.filter(RoleFilter("Admin"))
+router.message.filter(RoleFilter("manager"))
+router.callback_query.filter(RoleFilter("manager"))
 
 @router.message(F.text.in_(["🔄 Status o'zgartirish", "🔄 Изменить статус"]))
 async def status_management_handler(message: Message):

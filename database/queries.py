@@ -86,12 +86,35 @@ async def find_user_by_telegram_id(telegram_id: int) -> Optional[asyncpg.Record]
         await conn.close()
 
 async def find_user_by_phone(phone: str) -> Optional[asyncpg.Record]:
-    """Finds a user by their phone number."""
+    """Finds a user by their phone number with flexible format matching.
+    
+    Supports both formats: +998XXXXXXXXX and 998XXXXXXXXX
+    Also handles spaces and other non-digit characters.
+    """
     conn = await asyncpg.connect(settings.DB_URL)
     try:
+        # Normalize input phone by removing all non-digits
+        normalized_input = ''.join(filter(str.isdigit, phone))
+        
+        # Try multiple search strategies
         user = await conn.fetchrow(
-            'SELECT * FROM users WHERE phone = $1',
-            phone
+            """
+            SELECT * FROM users 
+            WHERE 
+                -- Exact match
+                phone = $1 OR
+                -- Match with + prefix
+                phone = $2 OR
+                -- Match without + prefix  
+                phone = $3 OR
+                -- Normalize both sides (remove all non-digits)
+                regexp_replace(phone, '[^0-9]', '', 'g') = $4
+            LIMIT 1
+            """,
+            phone,  # Original input
+            '+' + phone.lstrip('+'),  # Add + if not present
+            phone.lstrip('+'),  # Remove + if present
+            normalized_input  # Only digits
         )
         return user
     finally:

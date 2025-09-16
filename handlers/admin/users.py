@@ -4,6 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.state import State, StatesGroup
 import asyncpg
+import re
 from config import settings
 from typing import Optional
 from filters.role_filter import RoleFilter
@@ -58,7 +59,7 @@ ROLE_MAPPING = {
 @router.message(F.text.in_(["👥 Foydalanuvchilar", "👥 Пользователи"]))
 async def users_handler(message: Message):
     await message.answer(
-        "👥 Foydalanuvchilar boshqaruvi\n\nBu yerda barcha foydalanuvchilar ro'yxati ko'rsatiladi.\n\n👤 Rol: Admin",
+        "👥 Foydalanuvchilar boshqaruvi",
         reply_markup=get_user_management_keyboard()
     )
 
@@ -223,8 +224,15 @@ async def process_telegram_id(message: Message, state: FSMContext):
 async def process_phone(message: Message, state: FSMContext):
     phone = message.text.strip()
     
-    if not phone.startswith('998') or not phone[1:].isdigit() or len(phone) != 12:
-        await message.answer("❌ Xato! Telefon raqami 998XXXXXXXXX formatida bo'lishi kerak.")
+    # Telefon raqami formatini tekshirish - turli formatlarni qo'llab-quvvatlash
+    phone_pattern = re.compile(r"^\+?998\s?\d{2}\s?\d{3}\s?\d{2}\s?\d{2}$|^\+?998\d{9}$|^998\d{9}$|^\d{9}$")
+    
+    if not phone_pattern.match(phone):
+        await message.answer("❌ Xato! Telefon raqami quyidagi formatlardan birida bo'lishi kerak:\n"
+                           "• +998901234567\n"
+                           "• 998901234567\n"
+                           "• 901234567\n"
+                           "• +998 90 123 45 67")
         return
         
     user = await find_user_by_phone(phone)

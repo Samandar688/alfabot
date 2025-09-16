@@ -1,22 +1,51 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
+# ========== Tizim holati (System Status) ==========
+
+def get_system_status_keyboard(lang: str = "uz") -> InlineKeyboardMarkup:
+    """Tizim holati uchun inline keyboard"""
+    overview_text = "📊 Umumiy ko'rinish" if lang == "uz" else "📊 Общий обзор"
+    orders_text = "📝 Zayavkalar holati" if lang == "uz" else "📝 Статус заявок"
+    performance_text = "⚡ Ishlash ko'rsatkichlari" if lang == "uz" else "⚡ Показатели производительности"
+    activity_text = "🔄 So'nggi faoliyat" if lang == "uz" else "🔄 Последняя активность"
+    database_text = "💾 Ma'lumotlar bazasi" if lang == "uz" else "💾 База данных"
+    refresh_text = "🔄 Yangilash" if lang == "uz" else "🔄 Обновить"
+    close_text = "❌ Yopish" if lang == "uz" else "❌ Закрыть"
+    
+    keyboard = [
+        [
+            InlineKeyboardButton(text=overview_text, callback_data="system_overview"),
+            InlineKeyboardButton(text=orders_text, callback_data="system_orders")
+        ],
+        [
+            InlineKeyboardButton(text=performance_text, callback_data="system_performance"),
+            InlineKeyboardButton(text=activity_text, callback_data="system_activity")
+        ],
+        [
+            InlineKeyboardButton(text=database_text, callback_data="system_database"),
+            InlineKeyboardButton(text=refresh_text, callback_data="system_refresh")
+        ],
+        [
+            InlineKeyboardButton(text=close_text, callback_data="system_close")
+        ]
+    ]
+    
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
 # ========== Umumiy (admin) ==========
 
 def get_admin_main_menu(lang: str = "uz") -> ReplyKeyboardMarkup:
-
     statistics_text = "📊 Statistika" if lang == "uz" else "📊 Статистика"
     users_text = "👥 Foydalanuvchilar" if lang == "uz" else "👥 Пользователи"
     orders_text = "📝 Zayavkalar" if lang == "uz" else "📝 Заявки"
-    settings_text = "⚙️ Sozlamalar" if lang == "uz" else "⚙️ Настройки"
     export_text = "📤 Export" if lang == "uz" else "📤 Экспорт"
     language_text = "🌐 Til" if lang == "uz" else "🌐 Язык"
     status_text = "🔧 Tizim holati" if lang == "uz" else "🔧 Состояние системы"
 
     keyboard = [
         [KeyboardButton(text=statistics_text), KeyboardButton(text=users_text)],
-        [KeyboardButton(text=orders_text), KeyboardButton(text=settings_text)],
+        [KeyboardButton(text=orders_text), KeyboardButton(text=status_text)],
         [KeyboardButton(text=export_text), KeyboardButton(text=language_text)],
-        [KeyboardButton(text=status_text)],
     ]
 
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, one_time_keyboard=False)
@@ -206,3 +235,35 @@ def get_orders_navigation_keyboard(current_index: int, total_orders: int, order_
     )])
     
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_statistics_keyboard(lang: str = "uz"):
+    """Admin statistics section inline keyboard with bilingual support"""
+    
+    # Define button texts based on language
+    overview_text = "📈 Umumiy ko'rinish" if lang == "uz" else "📈 Общий обзор"
+    users_text = "👥 Foydalanuvchilar" if lang == "uz" else "👥 Пользователи"
+    connection_text = "📋 Ulanish buyurtmalari" if lang == "uz" else "📋 Заявки на подключение"
+    tech_text = "🔧 Texnik buyurtmalar" if lang == "uz" else "🔧 Технические заявки"
+    roles_text = "👤 Rollar bo'yicha" if lang == "uz" else "👤 По ролям"
+    monthly_text = "📊 Oylik statistika" if lang == "uz" else "📊 Месячная статистика"
+    close_text = "❌ Yopish" if lang == "uz" else "❌ Закрыть"
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text=overview_text, callback_data="stats_overview"),
+            InlineKeyboardButton(text=users_text, callback_data="stats_users")
+        ],
+        [
+            InlineKeyboardButton(text=connection_text, callback_data="stats_connection_orders"),
+            InlineKeyboardButton(text=tech_text, callback_data="stats_tech_orders")
+        ],
+        [
+            InlineKeyboardButton(text=roles_text, callback_data="stats_by_roles"),
+            InlineKeyboardButton(text=monthly_text, callback_data="stats_monthly")
+        ],
+        [
+            InlineKeyboardButton(text=close_text, callback_data="stats_close")
+        ]
+    ])
+    return keyboard

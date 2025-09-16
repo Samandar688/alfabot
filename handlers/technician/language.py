@@ -26,9 +26,9 @@ async def language_callback_handler(callback: CallbackQuery):
                 await session.commit()
                 
                 if language == "uz":
-                    text = "✅ Til muvaffaqiyatli o'zgartirildi!\n\n👤 Rol: Junior Manager"
+                    text = "✅ Til muvaffaqiyatli o'zgartirildi!\n\n👤 Rol: Technician"
                 else:
-                    text = "✅ Язык успешно изменен!\n\n👤 Роль: Junior Manager"
+                    text = "✅ Язык успешно изменен!\n\n👤 Роль: Technician"
                 
                 await callback.message.delete()
                 await callback.message.answer(text)

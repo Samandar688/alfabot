@@ -1,11 +1,12 @@
 from aiogram import Router, F
 from aiogram.filters import CommandStart, StateFilter
-from aiogram.types import Message
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import html
 
 from database.queries import get_or_create_user, find_user_by_telegram_id, update_user_phone, update_user_full_name
+from database.language_queries import get_user_language
 
 from keyboards.admin_buttons import get_admin_main_menu
 from keyboards.client_buttons import get_client_main_menu, get_contact_keyboard
@@ -59,7 +60,6 @@ async def start_handler(message: Message, state: FSMContext):
 
     await show_main_menu(message, role)
 
-
 @router.message(F.contact)
 async def handle_contact_share(message: Message, state: FSMContext):
     """Handle user's shared contact and save phone number."""
@@ -83,6 +83,7 @@ async def handle_contact_share(message: Message, state: FSMContext):
 async def process_full_name(message: Message, state: FSMContext):
     """Process user's full name input."""
     full_name = message.text.strip()
+    
     if len(full_name) < 3:  # Basic validation
         await message.answer("Iltimos, to'g'ri ism-sharif kiriting (kamida 3 ta belgi).")
         return
@@ -102,19 +103,21 @@ async def process_full_name(message: Message, state: FSMContext):
 
 async def show_main_menu(message: Message, role: str):
     """Show appropriate main menu based on user role."""
+    user_language = "uz"
+    
     role_keyboards = {
-        "admin": get_admin_main_menu(),
-        "client": get_client_main_menu(),
-        "manager": get_manager_main_menu(),
-        "junior_manager": get_junior_manager_main_menu(),
-        "controller": get_controller_main_menu(),
-        "technician": get_technician_main_menu(),
-        "warehouse": get_warehouse_main_menu(),
-        "callcenter_supervisor": get_call_center_supervisor_main_menu(),
-        "callcenter_operator": get_call_center_main_keyboard(),
+        "admin": get_admin_main_menu(user_language),
+        "client": get_client_main_menu(user_language),
+        "manager": get_manager_main_menu(user_language),
+        "junior_manager": get_junior_manager_main_menu(user_language),
+        "controller": get_controller_main_menu(user_language),
+        "technician": get_technician_main_menu(user_language),
+        "warehouse": get_warehouse_main_menu(user_language),
+        "callcenter_supervisor": get_call_center_supervisor_main_menu(user_language),
+        "callcenter_operator": get_call_center_main_keyboard(user_language),
     }
 
-    keyboard = role_keyboards.get(role, get_client_main_menu())
+    keyboard = role_keyboards.get(role, get_client_main_menu(user_language))
     
     # Database dan full_name olish
     db_user = await find_user_by_telegram_id(message.from_user.id)
