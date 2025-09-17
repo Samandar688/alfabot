@@ -8,12 +8,12 @@ from database.manager_inbox import (
     get_users_by_role,
     fetch_manager_inbox,
     assign_to_junior_manager,
+    count_manager_inbox,
 )
 from filters.role_filter import RoleFilter
 
 
 router = Router()
-
 router.message.filter(RoleFilter("manager"))  # 🔒 faqat JM uchun
 
 def fmt_dt(dt: datetime) -> str:
@@ -25,7 +25,7 @@ def esc(v) -> str:
         return "-"
     return html.escape(str(v), quote=False)
 
-def short_view_text(item: dict) -> str:
+def short_view_text(item: dict, index: int = 0, total: int = 1) -> str:
     full_id = str(item["id"])
     parts = full_id.split("_")
     short_id = full_id
@@ -49,17 +49,24 @@ def short_view_text(item: dict) -> str:
         f"👤 <b>Mijoz:</b> {client_name}\n"
         f"📞 <b>Telefon:</b> {client_phone}\n"
         f"📍 <b>Manzil:</b> {address}\n"
-        f"📅 <b>Yaratilgan:</b> {fmt_dt(created_dt)}"
+        f"📅 <b>Yaratilgan:</b> {fmt_dt(created_dt)}\n"
+        f"📄 <b>Ariza:</b> {index + 1}/{total}"   # ⬅️ qo‘shilgan qism
     )
 
 def nav_keyboard(index: int, total: int, current_id: str) -> InlineKeyboardMarkup:
     rows = []
     if index > 0:
         rows.append([InlineKeyboardButton(text="⬅️ Oldingi", callback_data=f"mgr_inbox_prev_{index}")])
-    row2 = [InlineKeyboardButton(text="📨 Kichik menejerga yuborish", callback_data=f"mgr_inbox_assign_{current_id}")]
-    if index < total - 1:
+
+    row2 = [InlineKeyboardButton(
+        text="📨 Kichik menejerga yuborish",
+        callback_data=f"mgr_inbox_assign_{current_id}"
+    )]
+    if index < total - 1:  # total bu yerda ekranga yuklangan ro'yxat uzunligi bo'ladi
         row2.append(InlineKeyboardButton(text="Keyingi ➡️", callback_data=f"mgr_inbox_next_{index}"))
     rows.append(row2)
+
+    # ⛔️ pastdagi 2/5 indikatorni butunlay olib tashladik
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 def jm_list_keyboard(full_id: str, juniors: list) -> InlineKeyboardMarkup:
@@ -75,14 +82,20 @@ async def open_inbox(message: Message, state: FSMContext):
     if not user or user.get("role") not in ("manager", "controller"):
         return
 
+    total_all = await count_manager_inbox()     # haqiqiy umumiy son
     items = await fetch_manager_inbox(limit=50, offset=0)
     if not items:
         await message.answer("📭 Inbox bo'sh")
         return
 
-    await state.update_data(inbox=items, idx=0)
-    text = short_view_text(items[0])
+    await state.update_data(inbox=items, idx=0, total=total_all)
+
+    # ⬇️ matn ichiga 1/total_all ko'rsatamiz
+    text = short_view_text(items[0], index=0, total=total_all)
+
+    # ⬇️ klaviatura uchun total = len(items) (ekranga yuklanganlar soni)
     kb = nav_keyboard(0, len(items), str(items[0]["id"]))
+
     await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
 @router.callback_query(F.data.startswith("mgr_inbox_prev_"))
@@ -90,12 +103,14 @@ async def prev_item(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
     data = await state.get_data()
     items = data.get("inbox", [])
+    total_all = data.get("total", len(items))   # matn uchun umumiy son
     idx = int(cb.data.replace("mgr_inbox_prev_", "")) - 1
     if idx < 0 or idx >= len(items):
         return
     await state.update_data(idx=idx)
-    text = short_view_text(items[idx])
-    kb = nav_keyboard(idx, len(items), str(items[idx]["id"]))
+
+    text = short_view_text(items[idx], index=idx, total=total_all)  # ⬅️
+    kb = nav_keyboard(idx, len(items), str(items[idx]["id"]))       # ⬅️
     await cb.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
 
 @router.callback_query(F.data.startswith("mgr_inbox_next_"))
@@ -103,12 +118,14 @@ async def next_item(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
     data = await state.get_data()
     items = data.get("inbox", [])
+    total_all = data.get("total", len(items))   # matn uchun umumiy son
     idx = int(cb.data.replace("mgr_inbox_next_", "")) + 1
     if idx < 0 or idx >= len(items):
         return
     await state.update_data(idx=idx)
-    text = short_view_text(items[idx])
-    kb = nav_keyboard(idx, len(items), str(items[idx]["id"]))
+
+    text = short_view_text(items[idx], index=idx, total=total_all)  # ⬅️
+    kb = nav_keyboard(idx, len(items), str(items[idx]["id"]))       # ⬅️
     await cb.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
 
 @router.callback_query(F.data.startswith("mgr_inbox_assign_"))
@@ -130,11 +147,14 @@ async def assign_back(cb: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     items = data.get("inbox", [])
     idx = data.get("idx", 0)
+    total_all = data.get("total", len(items))   # ⬅️
+
     if not items:
         await cb.message.edit_text("📭 Inbox bo'sh")
         return
-    text = short_view_text(items[idx])
-    kb = nav_keyboard(idx, len(items), str(items[idx]["id"]))
+
+    text = short_view_text(items[idx], index=idx, total=total_all)  # ⬅️
+    kb = nav_keyboard(idx, len(items), str(items[idx]["id"]))       # ⬅️
     await cb.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
 
 @router.callback_query(F.data.startswith("mgr_inbox_pick_"))
