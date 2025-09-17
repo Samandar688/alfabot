@@ -3,7 +3,7 @@ import asyncpg
 from typing import List, Dict, Any, Optional
 from config import settings
 
-
+#  telegram id orqali userni olish
 async def get_user_by_telegram_id(telegram_id: int) -> Optional[Dict[str, Any]]:
     conn = await asyncpg.connect(settings.DB_URL)
     try:
@@ -19,7 +19,7 @@ async def get_user_by_telegram_id(telegram_id: int) -> Optional[Dict[str, Any]]:
     finally:
         await conn.close()
 
-
+#  role bo'yicha userlarni olish
 async def get_users_by_role(role: str) -> List[Dict[str, Any]]:
     conn = await asyncpg.connect(settings.DB_URL)
     try:
@@ -37,7 +37,7 @@ async def get_users_by_role(role: str) -> List[Dict[str, Any]]:
     finally:
         await conn.close()
 
-
+#  manager uchun inboxni to'ldirish
 async def fetch_manager_inbox(limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
     """
     Manager ko‘rishi uchun: statusi 'new' yoki 'in_manager' bo‘lgan arizalar.
@@ -69,11 +69,7 @@ async def fetch_manager_inbox(limit: int = 50, offset: int = 0) -> List[Dict[str
     finally:
         await conn.close()
 
-
-# database/manager_inbox.py (yoki shunga mos faylda)
-import asyncpg
-from config import settings
-
+#  manager dan junior manager ga topshirish
 async def assign_to_junior_manager(request_id: int | str, jm_id: int, actor_id: int) -> None:
     """
     Manager -> Junior Manager:
@@ -155,5 +151,20 @@ async def assign_to_junior_manager(request_id: int | str, jm_id: int, actor_id: 
                 old_status,        # masalan: 'in_manager' yoki 'new'
                 new_status         # 'in_junior_manager'
             )
+    finally:
+        await conn.close()
+
+# manager inboxdagi arizalar soni
+async def count_manager_inbox() -> int:
+    conn = await asyncpg.connect(settings.DB_URL)
+    try:
+        return await conn.fetchval(
+            """
+            SELECT COUNT(*)
+              FROM connection_orders co
+             WHERE co.is_active = TRUE
+               AND co.status IN ('new','in_manager')
+            """
+        )
     finally:
         await conn.close()
