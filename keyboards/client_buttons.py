@@ -17,7 +17,7 @@ def get_client_main_menu(lang="uz"):
     contact_operator_text = "📞 Operator bilan bog'lanish" if lang == "uz" else "📞 Связаться с оператором"
     cabinet_text = "👤 Kabinet" if lang == "uz" else "👤 Кабинет"
     bot_guide_text = "📄 Bot qo'llanmasi" if lang == "uz" else " 📄Инструкция по использованию бота"
-    change_language_text = "🌐 Til o'zgartirish" if lang == "uz" else "🌐 Изменить язык"
+    change_language_text = "🌐 Tilni o'zgartirish" if lang == "uz" else "🌐 Изменить язык"
     
     buttons = [
         [

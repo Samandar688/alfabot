@@ -2,10 +2,11 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from database.language_queries import update_user_language, get_user_language
 from keyboards.admin_buttons import get_admin_main_menu
+from filters.role_filter import RoleFilter
 
 router = Router()
 
-@router.message(F.text.in_(["🌐 Til", "🌐 Язык"]))
+@router.message(RoleFilter("admin"), F.text.in_(["🌐 Til", "🌐 Язык"]))
 async def language_handler(message: Message):
     # Foydalanuvchi tilini olish
     current_language = await get_user_language(message.from_user.id)
@@ -33,7 +34,7 @@ async def language_handler(message: Message):
     
     await message.answer(text, reply_markup=keyboard)
 
-@router.callback_query(F.data.startswith("lang_"))
+@router.callback_query(RoleFilter("admin"), F.data.startswith("lang_"))
 async def language_callback_handler(callback: CallbackQuery):
     language = callback.data.split("_")[1]  # uz yoki ru
     
