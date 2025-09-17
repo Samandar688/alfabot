@@ -33,18 +33,11 @@ async def ccs_count_active() -> int:
         await conn.close()
 
 async def ccs_fetch_by_offset(offset: int) -> Optional[Dict[str, Any]]:
-    """
-    Joins:
-      - users u by abonent_id to show full_name (instead of raw user_id)
-      - tarif t by tarif_id to show tariff_name
-    NOTE: no region_code / tariff_code columns are used here.
-    """
     conn = await _conn()
     try:
         row = await conn.fetchrow("""
             SELECT
                 so.id,
-                so.user_id,                 -- kerak bo'lsa qoldiring
                 so.phone,
                 so.abonent_id,
                 so.region,
@@ -53,21 +46,10 @@ async def ccs_fetch_by_offset(offset: int) -> Optional[Dict[str, Any]]:
                 t.name AS tariff_name,
                 so.description,
                 so.created_at,
-
-                u.full_name                 -- ✅ users.id orqali full_name
-
+                u.full_name
             FROM saff_orders AS so
-
-            -- Tarif nomi
-            LEFT JOIN public.tarif AS t
-                   ON t.id = so.tarif_id
-
-            -- ✅ users.id = CAST(so.abonent_id AS int)
-            -- 1) bo'sh stringlardan qochish uchun NULLIF
-            -- 2) agar ichida formatli matn bo'lsa, raqamlarnigina olib cast qilish uchun regexp_replace variantini ham ko'rsatdim (pastda)
-            LEFT JOIN public.users AS u
-                   ON u.id = NULLIF(so.abonent_id, '')::int
-
+            LEFT JOIN public.tarif AS t ON t.id = so.tarif_id
+            LEFT JOIN public.users AS u ON u.id = NULLIF(so.abonent_id, '')::int
             WHERE so.status = 'in_call_center_supervisor'
               AND so.is_active = TRUE
             ORDER BY so.created_at ASC
@@ -87,7 +69,6 @@ async def ccs_send_to_control(order_id: int, supervisor_id: Optional[int] = None
                    updated_at = NOW()
              WHERE id = $1
         """, order_id)
-        # TODO: optional audit log with supervisor_id
     finally:
         await conn.close()
 
@@ -138,71 +119,114 @@ def region_title_from_id(rid: Optional[int]) -> str:
         return str(rid)
 
 # =========================================================
-# Tariff name resolver (prefer JOIN result)
+# Tariff name resolver
 # =========================================================
 def tariff_name_from_row(row: Dict[str, Any]) -> str:
-    """
-    Uses t.name (JOINed as tariff_name). If NULL/None, show '-'.
-    """
     name = row.get("tariff_name")
     return name if name else "-"
 
 # =========================================================
-# UI (keyboards + card formatter)
+# UI (keyboards + card formatter) with multi-language
 # =========================================================
-def _kb(idx: int, total: int, order_id: int) -> InlineKeyboardMarkup:
+def _kb(idx: int, total: int, order_id: int, lang: str = "uz") -> InlineKeyboardMarkup:
     prev_cb = f"ccs_prev:{idx}"
     next_cb = f"ccs_next:{idx}"
     send_cb = f"ccs_send:{order_id}:{idx}"
     cancel_cb = f"ccs_cancel:{order_id}:{idx}"
 
+    texts = {
+        "uz": {
+            "back": "◀️ Orqaga",
+            "next": "▶️ Oldinga",
+            "send": "📤 Controlga jo'natish",
+            "cancel": "❌ Bekor qilish",
+        },
+        "ru": {
+            "back": "◀️ Назад",
+            "next": "▶️ Далее",
+            "send": "📤 Отправить в Control",
+            "cancel": "❌ Отменить",
+        }
+    }
+
+    t = texts[lang]
+
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="◀️ Orqaga", callback_data=prev_cb),
-            InlineKeyboardButton(text="▶️ Oldinga", callback_data=next_cb),
+            InlineKeyboardButton(text=t["back"], callback_data=prev_cb),
+            InlineKeyboardButton(text=t["next"], callback_data=next_cb),
         ],
-        [InlineKeyboardButton(text="📤 Controlga jo'natish", callback_data=send_cb)],
-        [InlineKeyboardButton(text="❌ Bekor qilish", callback_data=cancel_cb)],
+        [InlineKeyboardButton(text=t["send"], callback_data=send_cb)],
+        [InlineKeyboardButton(text=t["cancel"], callback_data=cancel_cb)],
     ])
 
-def _format_card(row: dict, idx: int, total: int) -> str:
+def _format_card(row: dict, idx: int, total: int, lang: str = "uz") -> str:
     region_text = region_title_from_id(row.get("region"))
-    tariff_text = row.get("tariff_name") or "-"
-    full_name   = row.get("full_name") or "-"   # ✅ users dan keldi
-    abonent_id  = row.get("abonent_id") or "-"
+    full_name   = row.get("full_name") or "-"
     phone_text  = row.get("phone") or "-"
+    abonent_id  = row.get("abonent_id") or "-"
+
+    description = row.get("description")
+    tariff = row.get("tariff_name")
+
+    texts = {
+        "uz": {
+            "inbox": "📥 <b>Call Center Supervisor Inbox</b>",
+            "id": "🆔",
+            "tel": "📞 <b>Tel:</b>",
+            "client": "👤 <b>Mijoz:</b>",
+            "region": "📍 <b>Region:</b>",
+            "tariff": "💳 <b>Tarif:</b>",
+            "address": "🏠 <b>Manzil:</b>",
+            "issue": "📝 <b>Muammo:</b>",
+        },
+        "ru": {
+            "inbox": "📥 <b>Входящие (Супервайзер Call Center)</b>",
+            "id": "🆔",
+            "tel": "📞 <b>Тел:</b>",
+            "client": "👤 <b>Клиент:</b>",
+            "region": "📍 <b>Регион:</b>",
+            "tariff": "💳 <b>Тариф:</b>",
+            "address": "🏠 <b>Адрес:</b>",
+            "issue": "📝 <b>Проблема:</b>",
+        }
+    }
+
+    t = texts[lang]
+
+    description_text = f"{t['issue']} {description}\n" if description else ""
+    tariff_text = f"{t['tariff']} {tariff}\n" if tariff else ""
 
     return (
-        "📥 <b>Call Center Supervisor Inbox</b>\n"
-        f"🆔 <b>#{row['id']}</b>\n<i>{idx+1}/{total}</i>\n"
-        f"📞 <b>Tel:</b> {phone_text}\n"
-        f"👤 <b>Mijoz:</b> {full_name} \n"
-        f"📍 <b>Region:</b> {region_text}\n💳 <b>Tarif:</b> {tariff_text}\n"
-        f"🏠 <b>Manzil:</b> {row.get('address') or '-'}\n"
-        f"📝 <b>muommo:</b> {row.get('description') or '-'}\n"
+        f"{t['inbox']}\n"
+        f"{t['id']} <b>#{row['id']}</b>\n<i>{idx+1}/{total}</i>\n"
+        f"{t['tel']} {phone_text}\n"
+        f"{t['client']} {full_name}\n"
+        f"{t['region']} {region_text}\n"
+        f"{tariff_text}"
+        f"{t['address']} {row.get('address') or '-'}\n"
+        f"{description_text}"
     )
+
 # =========================================================
-# Show item (with bounds + refresh-after-action)
+# Show item (multi-lang)
 # =========================================================
-async def _show_item(target, idx: int):
+async def _show_item(target, idx: int, lang: str = "uz"):
     total = await ccs_count_active()
     if total == 0:
-        text = ("📭 Inbox bo'sh.\n")
+        text = "📭 Inbox bo'sh." if lang == "uz" else "📭 Инбокс пуст."
         if isinstance(target, Message):
             return await target.answer(text, parse_mode="HTML")
         return await target.message.edit_text(text, parse_mode="HTML")
 
-    # clamp index
     idx = max(0, min(idx, total - 1))
-
     row = await ccs_fetch_by_offset(idx)
     if not row:
-        # try last index if offset slipped
         idx = max(0, total - 1)
         row = await ccs_fetch_by_offset(idx)
 
-    kb = _kb(idx, total, row["id"])
-    text = _format_card(row, idx, total)
+    kb = _kb(idx, total, row["id"], lang)
+    text = _format_card(row, idx, total, lang)
 
     if isinstance(target, Message):
         return await target.answer(text, parse_mode="HTML", reply_markup=kb)
@@ -210,41 +234,44 @@ async def _show_item(target, idx: int):
         return await target.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
 # =========================================================
-# Handlers
+# Handlers (lang = uz/ru)
 # =========================================================
 @router.message(F.text.in_(["📥 Inbox", "📥 Инбокс", "Inbox", "📥 Supervisor Inbox"]))
-async def ccs_inbox(message: Message):
-    await _show_item(message, idx=0)
+async def ccs_inbox(message: Message, lang: str = "uz"):
+    await _show_item(message, idx=0, lang=lang)
 
 @router.callback_query(F.data.startswith("ccs_prev:"))
-async def ccs_prev(cb: CallbackQuery):
+async def ccs_prev(cb: CallbackQuery, lang: str = "uz"):
     cur = int(cb.data.split(":")[1])
-    await _show_item(cb, idx=cur - 1)
+    await _show_item(cb, idx=cur - 1, lang=lang)
     await cb.answer()
 
 @router.callback_query(F.data.startswith("ccs_next:"))
-async def ccs_next(cb: CallbackQuery):
+async def ccs_next(cb: CallbackQuery, lang: str = "uz"):
     cur = int(cb.data.split(":")[1])
-    await _show_item(cb, idx=cur + 1)
+    await _show_item(cb, idx=cur + 1, lang=lang)
     await cb.answer()
 
 @router.callback_query(F.data.startswith("ccs_send:"))
-async def ccs_send(cb: CallbackQuery):
+async def ccs_send(cb: CallbackQuery, lang: str = "uz"):
     _, order_id, cur = cb.data.split(":")
     order_id = int(order_id)
     cur = int(cur)
 
     await ccs_send_to_control(order_id, supervisor_id=cb.from_user.id)
-    # item removed from current list; same index points to the next item
-    await _show_item(cb, idx=cur)
-    await cb.answer("Controlga yuborildi")
+    await _show_item(cb, idx=cur, lang=lang)
+
+    msg = "Controlga yuborildi" if lang == "uz" else "Отправлено в Control"
+    await cb.answer(msg)
 
 @router.callback_query(F.data.startswith("ccs_cancel:"))
-async def ccs_cancel_cb(cb: CallbackQuery):
+async def ccs_cancel_cb(cb: CallbackQuery, lang: str = "uz"):
     _, order_id, cur = cb.data.split(":")
     order_id = int(order_id)
     cur = int(cur)
 
     await ccs_cancel(order_id)
-    await _show_item(cb, idx=cur)
-    await cb.answer("Ariza bekor qilindi")
+    await _show_item(cb, idx=cur, lang=lang)
+
+    msg = "Ariza bekor qilindi" if lang == "uz" else "Заявка отменена"
+    await cb.answer(msg)
