@@ -42,28 +42,20 @@ router.message.filter(RoleFilter("callcenter_supervisor"))
 router.callback_query.filter(RoleFilter("callcenter_supervisor"))
 
 # ----------------------- helpers -----------------------
-PHONE_RE = re.compile(r"^\+?998\s?\d{2}\s?\d{3}\s?\d{2}\s?\d{2}$|^\+?998\d{9}$|^\d{9,12}$")
+PHONE_RE = re.compile(r"^\+998\d{9}$")  # aniqroq variant
 
 def normalize_phone(phone_raw: str) -> str | None:
     phone_raw = (phone_raw or "").strip()
-    if not PHONE_RE.match(phone_raw):
-        return None
     digits = re.sub(r"\D", "", phone_raw)
     if digits.startswith("998") and len(digits) == 12:
         return "+" + digits
     if len(digits) == 9:
         return "+998" + digits
-    return phone_raw if phone_raw.startswith("+") else ("+" + digits if digits else None)
+    return phone_raw if phone_raw.startswith("+998") and len(digits) == 12 else None
 
 def strip_op_prefix_to_tariff(code: str | None) -> str | None:
-    """
-    op_tariff_xxx -> tariff_xxx  (we persist normalized code to state/DB helpers)
-    """
-    if not code:
-        return None
-    return "tariff_" + code[len("op_tariff_"):] if code.startswith("op_tariff_") else code
+    return "tariff_" + code[len("op_tariff_"):] if code and code.startswith("op_tariff_") else code
 
-# Region code -> numeric id mapping expected by DB (saff_orders.region INTEGER)
 REGION_CODE_TO_ID: dict[str, int] = {
     "toshkent_city": 1,
     "toshkent_region": 2,
@@ -82,41 +74,47 @@ REGION_CODE_TO_ID: dict[str, int] = {
 }
 
 def map_region_code_to_id(region_code: str | None) -> int | None:
-    if not region_code:
-        return None
-    return REGION_CODE_TO_ID.get(region_code)
+    return REGION_CODE_TO_ID.get(region_code) if region_code else None
 
-# ======================= ENTRY (reply buttons) =======================
+# ======================= ENTRY =======================
 UZ_ENTRY_TEXT = "🔌 Ulanish arizasi yaratish"
-RU_ENTRY_TEXT = "🔌 Создать заявку на подключение"  # optional RU support
+RU_ENTRY_TEXT = "🔌 Создать заявку на подключение"
 
 @router.message(F.text.in_([UZ_ENTRY_TEXT, RU_ENTRY_TEXT]))
 async def op_start_text(msg: Message, state: FSMContext):
-    """
-    Operator starts connection request creation via reply-button.
-    """
     await state.clear()
-    await state.set_state(SaffConnectionOrderStates.waiting_client_phone)
-    await msg.answer(
-        "📞 Mijoz telefon raqamini kiriting (masalan, +998901234567):",
-        reply_markup=ReplyKeyboardRemove(),
+    lang = "uz" if msg.text == UZ_ENTRY_TEXT else "ru"
+    await state.update_data(lang=lang)
+    text = (
+        "📞 Mijoz telefon raqamini kiriting (masalan, +998901234567):"
+        if lang == "uz" else
+        "📞 Введите номер телефона клиента (например, +998901234567):"
     )
+    await state.set_state(SaffConnectionOrderStates.waiting_client_phone)
+    await msg.answer(text, reply_markup=ReplyKeyboardRemove())
 
 # ======================= STEP 1: phone lookup =======================
 @router.message(StateFilter(SaffConnectionOrderStates.waiting_client_phone))
 async def op_get_phone(msg: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "uz")
+
     phone_n = normalize_phone(msg.text)
     if not phone_n:
-        return await msg.answer("❗️ Noto'g'ri format. Masalan: +998901234567")
+        return await msg.answer("❗️ Noto'g'ri format. Masalan: +998901234567" if lang == "uz"
+                                else "❗️ Неверный формат. Например: +998901234567")
 
     user = await find_user_by_phone(phone_n)
     if not user:
-        return await msg.answer("❌ Bu raqam bo'yicha foydalanuvchi topilmadi. To'g'ri raqam yuboring.")
+        return await msg.answer("❌ Bu raqam bo'yicha foydalanuvchi topilmadi." if lang == "uz"
+                                else "❌ Пользователь с таким номером не найден.")
 
-    await state.update_data(acting_client=user)  # store client dict
-
+    await state.update_data(acting_client=user)
     kb = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="Davom etish ▶️", callback_data="op_conn_continue")]]
+        inline_keyboard=[[InlineKeyboardButton(
+            text="Davom etish ▶️" if lang == "uz" else "Продолжить ▶️",
+            callback_data="op_conn_continue"
+        )]]
     )
     text = (
         "👤 Mijoz topildi:\n"
@@ -124,72 +122,91 @@ async def op_get_phone(msg: Message, state: FSMContext):
         f"• F.I.Sh: <b>{user.get('full_name','')}</b>\n"
         f"• Tel: <b>{user.get('phone','')}</b>\n\n"
         "Davom etish uchun tugmani bosing."
+        if lang == "uz" else
+        "👤 Клиент найден:\n"
+        f"• ID: <b>{user.get('id','')}</b>\n"
+        f"• ФИО: <b>{user.get('full_name','')}</b>\n"
+        f"• Тел: <b>{user.get('phone','')}</b>\n\n"
+        "Нажмите кнопку, чтобы продолжить."
     )
     await msg.answer(text, parse_mode="HTML", reply_markup=kb)
 
 # ======================= STEP 2: region =======================
 @router.callback_query(StateFilter(SaffConnectionOrderStates.waiting_client_phone), F.data == "op_conn_continue")
 async def op_after_confirm_user(cq: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "uz")
+
     await cq.message.edit_reply_markup()
-    await cq.message.answer("🌍 Regionni tanlang:", reply_markup=get_client_regions_keyboard())
+    text = "🌍 Regionni tanlang:" if lang == "uz" else "🌍 Выберите регион:"
+    await cq.message.answer(text, reply_markup=get_client_regions_keyboard())
     await state.set_state(SaffConnectionOrderStates.selecting_region)
     await cq.answer()
 
 @router.callback_query(F.data.startswith("region_"), StateFilter(SaffConnectionOrderStates.selecting_region))
 async def op_select_region(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "uz")
+
     await callback.answer()
     await callback.message.edit_reply_markup()
 
-    region_code = callback.data.replace("region_", "", 1)   # e.g. toshkent_city
+    region_code = callback.data.replace("region_", "", 1)
     await state.update_data(selected_region=region_code)
 
-    await callback.message.answer("🔌 Ulanish turini tanlang:", reply_markup=zayavka_type_keyboard())
+    text = "🔌 Ulanish turini tanlang:" if lang == "uz" else "🔌 Выберите тип подключения:"
+    await callback.message.answer(text, reply_markup=zayavka_type_keyboard())
     await state.set_state(SaffConnectionOrderStates.selecting_connection_type)
 
 # ======================= STEP 3: connection type =======================
 @router.callback_query(F.data.startswith("zayavka_type_"), StateFilter(SaffConnectionOrderStates.selecting_connection_type))
 async def op_select_connection_type(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "uz")
+
     await callback.answer()
     await callback.message.edit_reply_markup()
 
-    connection_type = callback.data.split("_")[-1]  # 'b2c' or 'b2b'
+    connection_type = callback.data.split("_")[-1]
     await state.update_data(connection_type=connection_type)
 
-    await callback.message.answer(
-        "📋 <b>Tariflardan birini tanlang:</b>",
-        reply_markup=get_operator_tariff_selection_keyboard(),  # operator-only keyboard
-        parse_mode="HTML",
-    )
+    text = "📋 <b>Tariflardan birini tanlang:</b>" if lang == "uz" else "📋 <b>Выберите один из тарифов:</b>"
+    await callback.message.answer(text, reply_markup=get_operator_tariff_selection_keyboard(), parse_mode="HTML")
     await state.set_state(SaffConnectionOrderStates.selecting_tariff)
 
-# ======================= STEP 4: tariff (OP-ONLY callbacks) =======================
-@router.callback_query(
-    StateFilter(SaffConnectionOrderStates.selecting_tariff),
-    F.data.startswith("op_tariff_")
-)
+# ======================= STEP 4: tariff =======================
+@router.callback_query(StateFilter(SaffConnectionOrderStates.selecting_tariff), F.data.startswith("op_tariff_"))
 async def op_select_tariff(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "uz")
+
     await callback.answer()
     await callback.message.edit_reply_markup()
 
-    # Example in: op_tariff_xammasi_birga_3_plus  ->  out: tariff_xammasi_birga_3_plus
     normalized_code = strip_op_prefix_to_tariff(callback.data)
     await state.update_data(selected_tariff=normalized_code)
 
-    await callback.message.answer("🏠 Manzilingizni kiriting:")
+    text = "🏠 Manzilingizni kiriting:" if lang == "uz" else "🏠 Введите ваш адрес:"
+    await callback.message.answer(text)
     await state.set_state(SaffConnectionOrderStates.entering_address)
 
 # ======================= STEP 5: address =======================
 @router.message(StateFilter(SaffConnectionOrderStates.entering_address))
 async def op_get_address(msg: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "uz")
+
     address = (msg.text or "").strip()
     if not address:
-        return await msg.answer("❗️ Iltimos, manzilni kiriting.")
+        return await msg.answer("❗️ Iltimos, manzilni kiriting." if lang == "uz" else "❗️ Пожалуйста, введите адрес.")
     await state.update_data(address=address)
-    await op_show_summary(msg, state)  # direct summary
+    await op_show_summary(msg, state)
 
 # ======================= STEP 6: summary =======================
 async def op_show_summary(target, state: FSMContext):
     data = await state.get_data()
+    lang = data.get("lang", "uz")
+
     region = data.get("selected_region", "-")
     ctype = (data.get("connection_type") or "b2c").upper()
     code_to_name = {
@@ -208,6 +225,12 @@ async def op_show_summary(target, state: FSMContext):
         f"💳 <b>Tarif:</b> {tariff_display}\n"
         f"🏠 <b>Manzil:</b> {address}\n\n"
         "Ma'lumotlar to‘g‘rimi?"
+        if lang == "uz" else
+        f"🗺️ <b>Регион:</b> {region}\n"
+        f"🔌 <b>Тип подключения:</b> {ctype}\n"
+        f"💳 <b>Тариф:</b> {tariff_display}\n"
+        f"🏠 <b>Адрес:</b> {address}\n\n"
+        "Данные верны?"
     )
 
     if hasattr(target, "answer"):
@@ -217,22 +240,24 @@ async def op_show_summary(target, state: FSMContext):
 
     await state.set_state(SaffConnectionOrderStates.confirming_connection)
 
-# ======================= STEP 7: confirm / resend =======================
+# ======================= STEP 7: confirm =======================
 @router.callback_query(F.data == "confirm_zayavka_call_center", StateFilter(SaffConnectionOrderStates.confirming_connection))
 async def op_confirm(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "uz")
+
     try:
         await callback.message.edit_reply_markup()
-        data = await state.get_data()
-
-        acting_client = data.get("acting_client")  # dict from phone lookup
+        acting_client = data.get("acting_client")
         if not acting_client:
-            return await callback.answer("Mijoz tanlanmagan", show_alert=True)
+            return await callback.answer("Mijoz tanlanmagan" if lang == "uz" else "Клиент не выбран", show_alert=True)
 
         client_user_id = acting_client["id"]
         user_row = await ensure_user(callback.from_user.id, callback.from_user.full_name, callback.from_user.username)
         user_id = user_row["id"]
+
         region_code = (data.get("selected_region") or "toshkent_city").lower()
-        tariff_code = data.get("selected_tariff")  # already normalized: tariff_xammasi_birga_*
+        tariff_code = data.get("selected_tariff")
         tarif_id = await get_or_create_tarif_by_code(tariff_code) if tariff_code else None
 
         region_id = map_region_code_to_id(region_code)
@@ -248,24 +273,32 @@ async def op_confirm(callback: CallbackQuery, state: FSMContext):
             tarif_id=tarif_id,
         )
 
-        await callback.message.answer(
-            (
-                "✅ <b>Ariza yaratildi (mijoz nomidan)</b>\n\n"
-                f"🆔 Ariza raqami: <code>{request_id}</code>\n"
-                f"📍 Region: {region_code.replace('_', ' ').title()}\n"
-                f"💳 Tarif: {tariff_code or '-'}\n"
-                f"📞 Tel: {acting_client.get('phone','-')}\n"
-                f"🏠 Manzil: {data.get('address','-')}\n"
-            ),
-            reply_markup=get_call_center_supervisor_main_menu(),
-            parse_mode="HTML",
+        text = (
+            "✅ <b>Ariza yaratildi (mijoz nomidan)</b>\n\n"
+            f"🆔 Ariza raqami: <code>{request_id}</code>\n"
+            f"📍 Region: {region_code.replace('_', ' ').title()}\n"
+            f"💳 Tarif: {tariff_code or '-'}\n"
+            f"📞 Tel: {acting_client.get('phone','-')}\n"
+            f"🏠 Manzil: {data.get('address','-')}\n"
+            if lang == "uz" else
+            "✅ <b>Заявка создана (от имени клиента)</b>\n\n"
+            f"🆔 Номер заявки: <code>{request_id}</code>\n"
+            f"📍 Регион: {region_code.replace('_', ' ').title()}\n"
+            f"💳 Тариф: {tariff_code or '-'}\n"
+            f"📞 Тел: {acting_client.get('phone','-')}\n"
+            f"🏠 Адрес: {data.get('address','-')}\n"
         )
+
+        await callback.message.answer(text, reply_markup=get_call_center_supervisor_main_menu(), parse_mode="HTML")
         await state.clear()
     except Exception as e:
         logger.exception("Operator confirm error: %s", e)
-        await callback.answer("Xatolik yuz berdi", show_alert=True)
+        await callback.answer("Xatolik yuz berdi" if lang == "uz" else "Произошла ошибка", show_alert=True)
 
 @router.callback_query(F.data == "resend_zayavka_call_center", StateFilter(SaffConnectionOrderStates.confirming_connection))
 async def op_resend(callback: CallbackQuery, state: FSMContext):
-    await callback.answer("🔄 Ma'lumotlar qayta ko‘rsatildi.")
+    data = await state.get_data()
+    lang = data.get("lang", "uz")
+
+    await callback.answer("🔄 Ma'lumotlar qayta ko‘rsatildi." if lang == "uz" else "🔄 Данные показаны повторно.")
     await op_show_summary(callback, state)

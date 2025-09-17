@@ -1,11 +1,3 @@
-from aiogram import Router, F
-from aiogram.types import Message
-from filters.role_filter import RoleFilter
-
-router = Router()
-router.message.filter(RoleFilter("manager"))
-router.callback_query.filter(RoleFilter("manager"))
-
 # handlers/manager/staff_activity.py
 # Faqat INLINE tugmalar bilan ishlaydi. Reply keyboard yuborilmaydi.
 # Kartochka: "Xodimlar faoliyati" — statistikalar va bo‘limlar.
