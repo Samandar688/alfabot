@@ -41,11 +41,13 @@ def get_admin_main_menu(lang: str = "uz") -> ReplyKeyboardMarkup:
     export_text = "📤 Export" if lang == "uz" else "📤 Экспорт"
     language_text = "🌐 Til" if lang == "uz" else "🌐 Язык"
     status_text = "🔧 Tizim holati" if lang == "uz" else "🔧 Состояние системы"
+    backup_text = "🗄️ Baza backup (.sql)" if lang == "uz" else "🗄️ Бэкап базы (.sql)"
 
     keyboard = [
         [KeyboardButton(text=statistics_text), KeyboardButton(text=users_text)],
         [KeyboardButton(text=orders_text), KeyboardButton(text=status_text)],
         [KeyboardButton(text=export_text), KeyboardButton(text=language_text)],
+        [KeyboardButton(text=backup_text)],
     ]
 
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, one_time_keyboard=False)
@@ -176,9 +178,9 @@ def get_users_pagination_keyboard(current_page: int, total_pages: int, has_prev:
     if len(page_row) > 1:  
         keyboard.append(page_row)
     
-    # Orqaga qaytish tugmasi
+    # Yopish tugmasi
     keyboard.append([
-        InlineKeyboardButton(text="◀️ Orqaga", callback_data="users_back_to_menu")
+        InlineKeyboardButton(text="❌ Yopish", callback_data="users_back_to_menu")
     ])
     
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
@@ -267,3 +269,76 @@ def get_statistics_keyboard(lang: str = "uz"):
         ]
     ])
     return keyboard
+
+
+# ========== Admin Export ==========
+def get_admin_export_types_keyboard(lang: str = "uz") -> InlineKeyboardMarkup:
+    if lang == "uz":
+        keyboard = [
+            [
+                InlineKeyboardButton(text="👤 Foydalanuvchilar (mijozlar)", callback_data="admin_export_users_clients"),
+                InlineKeyboardButton(text="👥 Xodimlar", callback_data="admin_export_users_staff"),
+            ],
+            [
+                InlineKeyboardButton(text="🔌 Ulanish arizalari", callback_data="admin_export_connection"),
+                InlineKeyboardButton(text="🔧 Texnik arizalar", callback_data="admin_export_technician"),
+            ],
+            [
+                InlineKeyboardButton(text="👤 Xodim arizalari", callback_data="admin_export_saff"),
+                InlineKeyboardButton(text="📦 Ombor inventarizatsiyasi", callback_data="admin_export_warehouse_inventory"),
+            ],
+            [
+                InlineKeyboardButton(text="📊 Ombor statistikasi", callback_data="admin_export_warehouse_stats"),
+                InlineKeyboardButton(text="⚠️ Kam zaxira", callback_data="admin_export_warehouse_low_stock"),
+            ],
+            [
+                InlineKeyboardButton(text="⛔ Zaxira tugagan", callback_data="admin_export_warehouse_out_of_stock"),
+                InlineKeyboardButton(text="📊 Statistika", callback_data="admin_export_statistics"),
+            ],
+            [InlineKeyboardButton(text="🚫 Yopish", callback_data="admin_export_end")],
+        ]
+    else:
+        keyboard = [
+            [
+                InlineKeyboardButton(text="👤 Пользователи (клиенты)", callback_data="admin_export_users_clients"),
+                InlineKeyboardButton(text="👥 Сотрудники", callback_data="admin_export_users_staff"),
+            ],
+            [
+                InlineKeyboardButton(text="🔌 Заявки на подключение", callback_data="admin_export_connection"),
+                InlineKeyboardButton(text="🔧 Технические заявки", callback_data="admin_export_technician"),
+            ],
+            [
+                InlineKeyboardButton(text="👤 Заявки сотрудников", callback_data="admin_export_saff"),
+                InlineKeyboardButton(text="📦 Инвентаризация склада", callback_data="admin_export_warehouse_inventory"),
+            ],
+            [
+                InlineKeyboardButton(text="📊 Статистика склада", callback_data="admin_export_warehouse_stats"),
+                InlineKeyboardButton(text="⚠️ Низкий остаток", callback_data="admin_export_warehouse_low_stock"),
+            ],
+            [
+                InlineKeyboardButton(text="⛔ Нет в наличии", callback_data="admin_export_warehouse_out_of_stock"),
+                InlineKeyboardButton(text="📊 Статистика", callback_data="admin_export_statistics"),
+            ],
+            [InlineKeyboardButton(text="🚫 Закрыть", callback_data="admin_export_end")],
+        ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_admin_export_formats_keyboard(lang: str = "uz") -> InlineKeyboardMarkup:
+    if lang == "uz":
+        keyboard = [
+            [InlineKeyboardButton(text="CSV", callback_data="admin_format_csv")],
+            [InlineKeyboardButton(text="Excel", callback_data="admin_format_xlsx")],
+            [InlineKeyboardButton(text="Word", callback_data="admin_format_docx")],
+            [InlineKeyboardButton(text="PDF", callback_data="admin_format_pdf")],
+            [InlineKeyboardButton(text="◀️ Orqaga", callback_data="admin_export_back_types")],
+        ]
+    else:
+        keyboard = [
+            [InlineKeyboardButton(text="CSV", callback_data="admin_format_csv")],
+            [InlineKeyboardButton(text="Excel", callback_data="admin_format_xlsx")],
+            [InlineKeyboardButton(text="Word", callback_data="admin_format_docx")],
+            [InlineKeyboardButton(text="PDF", callback_data="admin_format_pdf")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="admin_export_back_types")],
+        ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)

@@ -7,6 +7,7 @@ from . import (
     statistics,
     status,
     users,
+    backup,
 )
 
 router = Router()
@@ -18,4 +19,5 @@ router.include_routers(
     statistics.router,
     status.router,
     users.router,
+    backup.router,
 )
