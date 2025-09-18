@@ -86,6 +86,12 @@ def map_region_code_to_id(region_code: str | None) -> int | None:
         return None
     return REGION_CODE_TO_ID.get(region_code)
 
+# === Inline "Orqaga" tugmasi (telefon bosqichiga qaytaradi) ===
+def back_to_phone_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="🔙 Orqaga", callback_data="op_conn_back_to_phone")]]
+    )
+
 # ======================= ENTRY (reply buttons) =======================
 UZ_ENTRY_TEXT = "🔌 Ulanish arizasi yaratish"
 RU_ENTRY_TEXT = "🔌 Создать заявку на подключение"  # optional RU support
@@ -94,6 +100,7 @@ RU_ENTRY_TEXT = "🔌 Создать заявку на подключение"  
 async def op_start_text(msg: Message, state: FSMContext):
     """
     Operator starts connection request creation via reply-button.
+    NOTE: bu xabarda 'Orqaga' ko'rsatilmaydi. Orqaga faqat telefon kiritilgandan keyingi javoblarda bo'ladi.
     """
     await state.clear()
     await state.set_state(SaffConnectionOrderStates.waiting_client_phone)
@@ -107,25 +114,52 @@ async def op_start_text(msg: Message, state: FSMContext):
 async def op_get_phone(msg: Message, state: FSMContext):
     phone_n = normalize_phone(msg.text)
     if not phone_n:
-        return await msg.answer("❗️ Noto'g'ri format. Masalan: +998901234567")
+        # Format xato — xabar + Orqaga
+        return await msg.answer(
+            "❗️ Noto'g'ri format. Masalan: +998901234567",
+            reply_markup=back_to_phone_kb()
+        )
 
     user = await find_user_by_phone(phone_n)
     if not user:
-        return await msg.answer("❌ Bu raqam bo'yicha foydalanuvchi topilmadi. To'g'ri raqam yuboring.")
+        # Topilmadi — xabar + Orqaga
+        return await msg.answer(
+            "❌ Bu raqam bo'yicha foydalanuvchi topilmadi. To'g'ri raqam yuboring.",
+            reply_markup=back_to_phone_kb()
+        )
 
+    # Topildi — Davom etish + Orqaga birga
     await state.update_data(acting_client=user)  # store client dict
 
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="Davom etish ▶️", callback_data="op_conn_continue")]]
-    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="Davom etish ▶️", callback_data="op_conn_continue"),
+            InlineKeyboardButton(text="🔙 Orqaga",       callback_data="op_conn_back_to_phone"),
+        ]
+    ])
     text = (
         "👤 Mijoz topildi:\n"
         f"• ID: <b>{user.get('id','')}</b>\n"
         f"• F.I.Sh: <b>{user.get('full_name','')}</b>\n"
         f"• Tel: <b>{user.get('phone','')}</b>\n\n"
-        "Davom etish uchun tugmani bosing."
+        "Davom etish yoki orqaga qaytishni tanlang."
     )
     await msg.answer(text, parse_mode="HTML", reply_markup=kb)
+
+# === Orqaga: telefon bosqichiga qaytarish (har qayerdan) ===
+@router.callback_query(F.data == "op_conn_back_to_phone")
+async def op_back_to_phone(cq: CallbackQuery, state: FSMContext):
+    await cq.answer("Telefon bosqichiga qaytdik")
+    try:
+        await cq.message.edit_reply_markup()  # eski inline tugmalarni olib tashlash
+    except Exception:
+        pass
+    await state.clear()
+    await state.set_state(SaffConnectionOrderStates.waiting_client_phone)
+    await cq.message.answer(
+        "📞 Mijoz telefon raqamini kiriting (masalan, +998901234567):",
+        reply_markup=ReplyKeyboardRemove(),
+    )
 
 # ======================= STEP 2: region =======================
 @router.callback_query(StateFilter(SaffConnectionOrderStates.waiting_client_phone), F.data == "op_conn_continue")
@@ -267,5 +301,21 @@ async def op_confirm(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "resend_zayavka_call_center", StateFilter(SaffConnectionOrderStates.confirming_connection))
 async def op_resend(callback: CallbackQuery, state: FSMContext):
-    await callback.answer("🔄 Ma'lumotlar qayta ko‘rsatildi.")
-    await op_show_summary(callback, state)
+    """
+    Qayta yuborish: jarayonni REGION tanlashdan qayta boshlaydi.
+    Telefon bo'yicha acting_client saqlanib qoladi.
+    """
+    await callback.answer("🔄 Qaytadan boshladik")
+    try:
+        await callback.message.edit_reply_markup()
+    except Exception:
+        pass
+
+    data = await state.get_data()
+    acting_client = data.get("acting_client")  # saqlab qo'yamiz
+    await state.clear()
+    if acting_client:
+        await state.update_data(acting_client=acting_client)
+
+    await state.set_state(SaffConnectionOrderStates.selecting_region)
+    await callback.message.answer("🌍 Regionni tanlang:", reply_markup=get_client_regions_keyboard())

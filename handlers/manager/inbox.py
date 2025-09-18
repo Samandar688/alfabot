@@ -76,7 +76,7 @@ def jm_list_keyboard(full_id: str, juniors: list) -> InlineKeyboardMarkup:
     rows.append([InlineKeyboardButton(text="🔙 Orqaga", callback_data=f"mgr_inbox_back_{full_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
-@router.message(F.text.in_(["📥 Inbox", "Inbox"]))
+@router.message(F.text.in_(["📥 Inbox", "📥 Входящие"]))
 async def open_inbox(message: Message, state: FSMContext):
     user = await get_user_by_telegram_id(message.from_user.id)
     if not user or user.get("role") not in ("manager", "controller"):

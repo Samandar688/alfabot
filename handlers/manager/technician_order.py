@@ -23,10 +23,10 @@ from states.manager_states import SaffTechnicianOrderStates
 
 # === DB ===
 from database.manager_connection_queries import (
-    find_user_by_phone,   # 6 ta parametrli variant: (user_id, phone, abonent_id, region, address, description)
+    find_user_by_phone,   # user lookup
+    saff_orders_technician_create,        # texnik xizmat arizasi yaratish
 )
 from database.client_queries import ensure_user
-from database.manager_connection_queries import saff_orders_technician_create #list_all_technicians  # texniklar ro'yxati
 
 # === Role filter ===
 from filters.role_filter import RoleFilter
@@ -63,15 +63,11 @@ def map_region_code_to_id(region_code: str | None) -> int | None:
         return None
     return REGION_CODE_TO_ID.get(region_code)
 
-def technicians_keyboard(techs):
-    rows = []
-    for t in techs:
-        tid = t.get("id")
-        name = t.get("full_name") or f"ID {tid}"
-        # Callbackda ID bo‘lsa ham, ekranga faqat ism chiqyapti
-        rows.append([InlineKeyboardButton(text=f"👨‍🔧 {name}", callback_data=f"op_pick_tech_{tid}")])
-    rows.append([InlineKeyboardButton(text="🔄 Ro'yxatni yangilash", callback_data="op_refresh_techs")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+# 🔙 Telefon bosqichiga qaytish uchun inline klaviatura
+def back_to_phone_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="🔙 Orqaga", callback_data="op_tservice_back_to_phone")]]
+    )
 
 # ======================= ENTRY (reply button) =======================
 UZ_ENTRY_TEXT = "🔧 Texnik xizmat yaratish"
@@ -81,31 +77,57 @@ RU_ENTRY_TEXT = "🛠 Создать заявку на техобслужива�
 async def op_start_text(msg: Message, state: FSMContext):
     await state.clear()
     await state.set_state(SaffTechnicianOrderStates.waiting_client_phone)
-    await msg.answer("📞 Mijoz telefon raqamini kiriting (masalan, +998901234567):", reply_markup=ReplyKeyboardRemove())
+    await msg.answer(
+        "📞 Mijoz telefon raqamini kiriting (masalan, +998901234567):",
+        reply_markup=ReplyKeyboardRemove()
+    )
 
 # ======================= STEP 1: phone lookup =======================
 @router.message(StateFilter(SaffTechnicianOrderStates.waiting_client_phone))
 async def op_get_phone(msg: Message, state: FSMContext):
     phone_n = normalize_phone(msg.text)
     if not phone_n:
-        return await msg.answer("❗️ Noto'g'ri format. Masalan: +998901234567")
+        return await msg.answer(
+            "❗️ Noto'g'ri format. Masalan: +998901234567",
+            reply_markup=back_to_phone_kb()
+        )
 
     user = await find_user_by_phone(phone_n)
     if not user:
-        return await msg.answer("❌ Bu raqam bo'yicha foydalanuvchi topilmadi. To'g'ri raqam yuboring.")
+        return await msg.answer(
+            "❌ Bu raqam bo'yicha foydalanuvchi topilmadi. To'g'ri raqam yuboring.",
+            reply_markup=back_to_phone_kb()
+        )
 
     await state.update_data(acting_client=user)
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Davom etish ▶️", callback_data="op_tservice_continue")]
-    ])
+    # Topildi — Davom etish + Orqaga yonma-yon
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="Davom etish ▶️", callback_data="op_tservice_continue"),
+        InlineKeyboardButton(text="🔙 Orqaga",       callback_data="op_tservice_back_to_phone"),
+    ]])
     text = (
         "👤 Mijoz topildi:\n"
         f"• ID: <b>{user.get('id','')}</b>\n"
         f"• F.I.Sh: <b>{user.get('full_name','')}</b>\n"
         f"• Tel: <b>{user.get('phone','')}</b>\n\n"
-        "Davom etish uchun tugmani bosing."
+        "Davom etish yoki orqaga qaytishni tanlang."
     )
     await msg.answer(text, parse_mode="HTML", reply_markup=kb)
+
+# 🔙 Har qayerdan telefon bosqichiga qaytarish
+@router.callback_query(F.data == "op_tservice_back_to_phone")
+async def tservice_back_to_phone(cq: CallbackQuery, state: FSMContext):
+    await cq.answer("Telefon bosqichiga qaytdik")
+    try:
+        await cq.message.edit_reply_markup()
+    except Exception:
+        pass
+    await state.clear()
+    await state.set_state(SaffTechnicianOrderStates.waiting_client_phone)
+    await cq.message.answer(
+        "📞 Mijoz telefon raqamini kiriting (masalan, +998901234567):",
+        reply_markup=ReplyKeyboardRemove()
+    )
 
 # ======================= STEP 2: region =======================
 @router.callback_query(StateFilter(SaffTechnicianOrderStates.waiting_client_phone), F.data == "op_tservice_continue")
@@ -134,13 +156,11 @@ async def op_get_description(msg: Message, state: FSMContext):
         return await msg.answer("❗️ Iltimos, muammoni aniqroq yozing (kamida 5 belgi).")
     await state.update_data(description=desc)
 
-
-
     # Next: address
     await msg.answer("🏠 Manzilingizni kiriting:")
     await state.set_state(SaffTechnicianOrderStates.entering_address)
 
-# ======================= STEP 5: address =======================
+# ======================= STEP 4: address =======================
 @router.message(StateFilter(SaffTechnicianOrderStates.entering_address))
 async def op_get_address(msg: Message, state: FSMContext):
     address = (msg.text or "").strip()
@@ -149,13 +169,12 @@ async def op_get_address(msg: Message, state: FSMContext):
     await state.update_data(address=address)
     await op_show_summary(msg, state)
 
-# ======================= STEP 6: summary =======================
+# ======================= STEP 5: summary =======================
 async def op_show_summary(target, state: FSMContext):
     data = await state.get_data()
     region = data.get("selected_region", "-")
     address = data.get("address", "-")
     description = data.get("description", "-")
-    technician_name = data.get("technician_name")  # <- faqat ism
 
     text = (
         f"🗺️ <b>Hudud:</b> {region}\n"
@@ -173,8 +192,11 @@ async def op_show_summary(target, state: FSMContext):
 
     await state.set_state(SaffTechnicianOrderStates.confirming_connection)
 
-# ======================= STEP 7: confirm / resend =======================
-@router.callback_query(F.data == "confirm_zayavka_call_center_tech_service", StateFilter(SaffTechnicianOrderStates.confirming_connection))
+# ======================= STEP 6: confirm / resend =======================
+@router.callback_query(
+    F.data == "confirm_zayavka_call_center_tech_service",
+    StateFilter(SaffTechnicianOrderStates.confirming_connection)
+)
 async def op_confirm(callback: CallbackQuery, state: FSMContext):
     try:
         await callback.message.edit_reply_markup()
@@ -193,13 +215,7 @@ async def op_confirm(callback: CallbackQuery, state: FSMContext):
         if region_id is None:
             raise ValueError(f"Unknown region code: {region_code}")
 
-        # Agar texnik nomini bazaga alohida kiritmoqchi bo'lsangiz,
-        # descriptionga qo'shib yuborish mumkin (ixtiyoriy):
         description = data.get("description", "") or ""
-        technician_name = data.get("technician_name")
-        # Masalan:
-        # if technician_name:
-        #     description = f"{description}\n(Texnik: {technician_name})"
 
         request_id = await saff_orders_technician_create(
             user_id=user_id,
@@ -217,7 +233,7 @@ async def op_confirm(callback: CallbackQuery, state: FSMContext):
                 f"📍 Region: {region_code.replace('_', ' ').title()}\n"
                 f"📞 Tel: {acting_client.get('phone','-')}\n"
                 f"🏠 Manzil: {data.get('address','-')}\n"
-                f"📝 muommo: {description or '-'}\n"
+                f"📝 Muammo: {description or '-'}\n"
             ),
             reply_markup=get_manager_main_menu(),
             parse_mode="HTML",
@@ -227,7 +243,26 @@ async def op_confirm(callback: CallbackQuery, state: FSMContext):
         logger.exception("Operator technical confirm error: %s", e)
         await callback.answer("Xatolik yuz berdi", show_alert=True)
 
-@router.callback_query(F.data == "resend_zayavka_call_center_tech_service", StateFilter(SaffTechnicianOrderStates.confirming_connection))
+@router.callback_query(
+    F.data == "resend_zayavka_call_center_tech_service",
+    StateFilter(SaffTechnicianOrderStates.confirming_connection)
+)
 async def op_resend(callback: CallbackQuery, state: FSMContext):
-    await callback.answer("🔄 Ma'lumotlar qayta ko‘rsatildi.")
-    await op_show_summary(callback, state)
+    """
+    Qayta yuborish: jarayonni REGION tanlashdan qayta boshlaydi.
+    Telefon bo'yicha acting_client saqlanib qoladi.
+    """
+    await callback.answer("🔄 Qaytadan boshladik")
+    try:
+        await callback.message.edit_reply_markup()
+    except Exception:
+        pass
+
+    data = await state.get_data()
+    acting_client = data.get("acting_client")
+    await state.clear()
+    if acting_client:
+        await state.update_data(acting_client=acting_client)
+
+    await state.set_state(SaffTechnicianOrderStates.selecting_region)
+    await callback.message.answer("🌍 Regionni tanlang:", reply_markup=get_client_regions_keyboard())

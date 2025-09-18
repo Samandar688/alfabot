@@ -14,6 +14,7 @@ from database.manager_staff_activity import (
     get_junior_manager_count,
 )
 
+
 router = Router()
 router.message.filter(RoleFilter("manager"))
 router.callback_query.filter(RoleFilter("manager"))
