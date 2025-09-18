@@ -5,6 +5,7 @@ from typing import Optional, Dict, Any
 import asyncpg
 from config import settings
 from filters.role_filter import RoleFilter
+from database.language_queries import get_user_language   # ⬅️ qo‘shildi
 
 # =========================================================
 # Router (role: callcenter_supervisor)
@@ -37,22 +38,15 @@ async def ccs_fetch_by_offset(offset: int) -> Optional[Dict[str, Any]]:
     try:
         row = await conn.fetchrow("""
             SELECT
-                so.id,
-                so.phone,
-                so.abonent_id,
-                so.region,
-                so.address,
-                so.tarif_id,
-                t.name AS tariff_name,
-                so.description,
-                so.created_at,
-                u.full_name
+                so.id, so.phone, so.abonent_id, so.region, so.address,
+                so.tarif_id, t.name AS tariff_name, so.description,
+                so.created_at, u.full_name
             FROM saff_orders AS so
             LEFT JOIN public.tarif AS t ON t.id = so.tarif_id
             LEFT JOIN public.users AS u ON u.id = NULLIF(so.abonent_id, '')::int
             WHERE so.status = 'in_call_center_supervisor'
               AND so.is_active = TRUE
-            ORDER BY so.created_at ASC
+            ORDER BY so.created_at ASC, so.id ASC   -- ✅ id qo‘shildi
             OFFSET $1
             LIMIT 1
         """, offset)
@@ -63,26 +57,53 @@ async def ccs_fetch_by_offset(offset: int) -> Optional[Dict[str, Any]]:
 async def ccs_send_to_control(order_id: int, supervisor_id: Optional[int] = None) -> None:
     conn = await _conn()
     try:
+        # 1️⃣ Controller id sini olish
+        controller = await conn.fetchrow("""
+            SELECT id
+            FROM users
+            WHERE role = 'controller'
+            ORDER BY id ASC
+            LIMIT 1
+        """)
+        if not controller:
+            raise Exception("Controller topilmadi")
+
+        controller_id = controller["id"]
+
+        # 2️⃣ saff_orders dagi user_id ni olish (ya’ni sender_id sifatida ishlatamiz)
+        saff_order = await conn.fetchrow("""
+            SELECT user_id
+            FROM saff_orders
+            WHERE id = $1
+        """, order_id)
+
+        if not saff_order or not saff_order["user_id"]:
+            raise Exception(f"saff_orders.id={order_id} uchun user_id topilmadi")
+
+        sender_user_id = saff_order["user_id"]
+
+        # 3️⃣ saff_orders jadvalini yangilash
         await conn.execute("""
             UPDATE saff_orders
                SET status = 'in_controller',
                    updated_at = NOW()
              WHERE id = $1
         """, order_id)
+
+        # 4️⃣ connections jadvaliga yozuv qo‘shish
+        await conn.execute("""
+            INSERT INTO connections (
+                sender_id, recipient_id, connecion_id, technician_id, saff_id,
+                created_at, updated_at, sender_status, recipient_status
+            )
+            VALUES ($1, $2, NULL, NULL, $3, NOW(), NOW(),
+                    'in_call_center_supervisor', 'in_controller')
+        """, sender_user_id, controller_id, order_id)
+
     finally:
         await conn.close()
 
-async def ccs_cancel(order_id: int) -> None:
-    conn = await _conn()
-    try:
-        await conn.execute("""
-            UPDATE saff_orders
-               SET is_active = FALSE,
-                   updated_at = NOW()
-             WHERE id = $1
-        """, order_id)
-    finally:
-        await conn.close()
+
 
 # =========================================================
 # Region mapping (id -> human title)
@@ -148,7 +169,6 @@ def _kb(idx: int, total: int, order_id: int, lang: str = "uz") -> InlineKeyboard
             "cancel": "❌ Отменить",
         }
     }
-
     t = texts[lang]
 
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -191,7 +211,6 @@ def _format_card(row: dict, idx: int, total: int, lang: str = "uz") -> str:
             "issue": "📝 <b>Проблема:</b>",
         }
     }
-
     t = texts[lang]
 
     description_text = f"{t['issue']} {description}\n" if description else ""
@@ -211,7 +230,9 @@ def _format_card(row: dict, idx: int, total: int, lang: str = "uz") -> str:
 # =========================================================
 # Show item (multi-lang)
 # =========================================================
-async def _show_item(target, idx: int, lang: str = "uz"):
+async def _show_item(target, idx: int, user_id: int):
+    lang = await get_user_language(user_id) or "uz"
+
     total = await ccs_count_active()
     if total == 0:
         text = "📭 Inbox bo'sh." if lang == "uz" else "📭 Инбокс пуст."
@@ -234,44 +255,59 @@ async def _show_item(target, idx: int, lang: str = "uz"):
         return await target.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
 # =========================================================
-# Handlers (lang = uz/ru)
+# Handlers (lang dynamic from DB)
 # =========================================================
 @router.message(F.text.in_(["📥 Inbox", "📥 Входящие"]))
-async def ccs_inbox(message: Message, lang: str = "uz"):
-    await _show_item(message, idx=0, lang=lang)
+async def ccs_inbox(message: Message):
+    await _show_item(message, idx=0, user_id=message.from_user.id)
 
 @router.callback_query(F.data.startswith("ccs_prev:"))
-async def ccs_prev(cb: CallbackQuery, lang: str = "uz"):
+async def ccs_prev(cb: CallbackQuery):
     cur = int(cb.data.split(":")[1])
-    await _show_item(cb, idx=cur - 1, lang=lang)
+    await _show_item(cb, idx=cur - 1, user_id=cb.from_user.id)
     await cb.answer()
 
 @router.callback_query(F.data.startswith("ccs_next:"))
-async def ccs_next(cb: CallbackQuery, lang: str = "uz"):
+async def ccs_next(cb: CallbackQuery):
     cur = int(cb.data.split(":")[1])
-    await _show_item(cb, idx=cur + 1, lang=lang)
+    await _show_item(cb, idx=cur + 1, user_id=cb.from_user.id)
     await cb.answer()
 
 @router.callback_query(F.data.startswith("ccs_send:"))
-async def ccs_send(cb: CallbackQuery, lang: str = "uz"):
+async def ccs_send(cb: CallbackQuery):
     _, order_id, cur = cb.data.split(":")
     order_id = int(order_id)
     cur = int(cur)
 
     await ccs_send_to_control(order_id, supervisor_id=cb.from_user.id)
-    await _show_item(cb, idx=cur, lang=lang)
+    await _show_item(cb, idx=cur, user_id=cb.from_user.id)
 
+    lang = await get_user_language(cb.from_user.id) or "uz"
     msg = "Controlga yuborildi" if lang == "uz" else "Отправлено в Control"
     await cb.answer(msg)
 
+async def ccs_cancel(order_id: int) -> None:
+    conn = await _conn()
+    try:
+        await conn.execute("""
+            UPDATE saff_orders
+               SET status = 'cancelled',
+                   is_active = FALSE,
+                   updated_at = NOW()
+             WHERE id = $1
+        """, order_id)
+    finally:
+        await conn.close()
+
 @router.callback_query(F.data.startswith("ccs_cancel:"))
-async def ccs_cancel_cb(cb: CallbackQuery, lang: str = "uz"):
+async def ccs_cancel_cb(cb: CallbackQuery):
     _, order_id, cur = cb.data.split(":")
     order_id = int(order_id)
     cur = int(cur)
 
     await ccs_cancel(order_id)
-    await _show_item(cb, idx=cur, lang=lang)
+    await _show_item(cb, idx=cur, user_id=cb.from_user.id)
 
+    lang = await get_user_language(cb.from_user.id) or "uz"
     msg = "Ariza bekor qilindi" if lang == "uz" else "Заявка отменена"
     await cb.answer(msg)
