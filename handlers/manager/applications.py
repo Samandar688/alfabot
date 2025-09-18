@@ -5,6 +5,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 import html
+from aiogram.exceptions import TelegramBadRequest
 
 from filters.role_filter import RoleFilter
 
@@ -29,11 +30,12 @@ router.callback_query.filter(RoleFilter("manager"))
 
 def _apps_menu_kb() -> InlineKeyboardMarkup:
     rows = [
-        [InlineKeyboardButton(text="🆕 Yangi buyurtmalar",   callback_data="apps:new")],
-        [InlineKeyboardButton(text="⏳ Jarayondagilar",       callback_data="apps:progress")],
-        [InlineKeyboardButton(text="✅ Bugun bajarilgan",     callback_data="apps:done_today")],
-        [InlineKeyboardButton(text="❌ Bekor qilinganlar",    callback_data="apps:cancelled")],
-        [InlineKeyboardButton(text="♻️ Yangilash",           callback_data="apps:refresh")],
+        [InlineKeyboardButton(text="🆕 Yangi buyurtmalar", callback_data="apps:new")],
+        [InlineKeyboardButton(text="⏳ Jarayondagilar",     callback_data="apps:progress")],
+        [InlineKeyboardButton(text="✅ Bugun bajarilgan",   callback_data="apps:done_today")],
+        [InlineKeyboardButton(text="🚫 Bekor qilinganlar",  callback_data="apps:cancelled")],  # ⬅️ oldingi ❌ ni 🚫 ga almashtirdik
+        [InlineKeyboardButton(text="♻️ Yangilash",         callback_data="apps:refresh")],
+        [InlineKeyboardButton(text="❌ Yopish",             callback_data="apps:close")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -54,6 +56,19 @@ def _list_nav_kb(index: int, total_loaded: int) -> InlineKeyboardMarkup:
     rows.append([InlineKeyboardButton(text="🔙 Orqaga", callback_data="apps:back")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
+@router.callback_query(F.data == "apps:close")
+async def apps_close(call: CallbackQuery, state: FSMContext):
+    await call.answer("Yopildi")
+    # State ichidagi ro'yxat kontekstini tozalab qo'yamiz (ixtiyoriy)
+    await state.update_data(apps_cat=None, apps_items=None, apps_idx=None, apps_total=None)
+    try:
+        await call.message.delete()  # 🔥 xabarni to‘liq o‘chiradi
+    except TelegramBadRequest:
+        # Fallback: hech bo'lmasa tugmalarni olib tashlaymiz
+        try:
+            await call.message.edit_reply_markup(reply_markup=None)
+        except TelegramBadRequest:
+            pass
 
 def _esc(x: str | None) -> str:
     return html.escape(x or "-")
