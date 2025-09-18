@@ -186,7 +186,7 @@ async def process_user_search_for_block(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(user_info, parse_mode='HTML')
 
-@router.message(F.text.in_(["🔄 Rolni o'zgartirish", "🔄 Изменить роль"]))
+@router.message(F.text == "🔄 Rolni o'zgartirish")
 async def change_user_role(message: Message, state: FSMContext):
     """Start the role change process by asking for search method"""
     lang = await get_user_language(message.from_user.id) or "uz"
@@ -379,13 +379,12 @@ async def process_role_selection(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-async def format_user_info(user: dict, index: int, language: str = "uz") -> str:
+def format_user_info(user: dict, index: int) -> str:
     """Mijoz ma'lumotlarini muvozanatli formatda tayyorlash
     
     Args:
         user: Foydalanuvchi ma'lumotlari
         index: Tartib raqami
-        language: Til kodi (uz/ru)
     
     Returns:
         str: Formatlangan mijoz ma'lumotlari
@@ -398,68 +397,37 @@ async def format_user_info(user: dict, index: int, language: str = "uz") -> str:
                 created_date = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
                 formatted_date = created_date.strftime("%d.%m.%Y")
             except:
-                formatted_date = "Noma'lum" if language == "uz" else "Неизвестно"
+                formatted_date = "Noma'lum"
         else:
             formatted_date = created_at.strftime("%d.%m.%Y")
     else:
-        formatted_date = "Noma'lum" if language == "uz" else "Неизвестно"
+        formatted_date = "Noma'lum"
     
     # Mijoz ma'lumotlarini muvozanatli formatlash
-    user_info = f"👤 <b>{index}.</b> {user.get('full_name', 'Noma\'lum' if language == 'uz' else 'Неизвестно')}\n"
-    
-    # Labels based on language
-    if language == "uz":
-        id_label = "ID"
-        phone_label = "Telefon"
-        username_label = "Username"
-        role_label = "Rol"
-        date_label = "Sana"
-        unknown_phone = "Noma'lum"
-    else:
-        id_label = "ID"
-        phone_label = "Телефон"
-        username_label = "Имя пользователя"
-        role_label = "Роль"
-        date_label = "Дата"
-        unknown_phone = "Неизвестно"
-    
-    user_info += f"    🆔 <b>{id_label}:</b> <code>{user.get('telegram_id')}</code>\n"
-    user_info += f"    📱 <b>{phone_label}:</b> {user.get('phone', unknown_phone)}\n"
+    user_info = f"👤 <b>{index}.</b> {user.get('full_name', 'Noma\'lum')}\n"
+    user_info += f"    🆔 <b>ID:</b> <code>{user.get('telegram_id')}</code>\n"
+    user_info += f"    📱 <b>Telefon:</b> {user.get('phone', 'Noma\'lum')}\n"
     
     # Username mavjud bo'lsa
     if user.get('username'):
-        user_info += f"    👤 <b>{username_label}:</b> @{user.get('username')}\n"
+        user_info += f"    👤 <b>Username:</b> @{user.get('username')}\n"
     
     # Rol ma'lumotini ko'rsatish
-    role = user.get('role', 'Noma\'lum' if language == 'uz' else 'Неизвестно')
+    role = user.get('role', 'Noma\'lum')
+    role_display = {
+        'admin': '👑 Admin',
+        'client': '👤 Mijoz',
+        'manager': '👨‍💼 Menejer',
+        'junior_manager': '👨‍💼 Kichik Menejer',
+        'controller': '🎛️ Nazoratchi',
+        'technician': '🔧 Texnik',
+        'warehouse': '📦 Ombor',
+        'callcenter_operator': '📞 Call Center',
+        'callcenter_supervisor': '📞 Call Center Boshlig\'i'
+    }.get(role, f'🚀 {role.title()}')
     
-    if language == "uz":
-        role_display = {
-            'admin': '👑 Admin',
-            'client': '👤 Mijoz',
-            'manager': '👨‍💼 Menejer',
-            'junior_manager': '👨‍💼 Kichik Menejer',
-            'controller': '🎛️ Nazoratchi',
-            'technician': '🔧 Texnik',
-            'warehouse': '📦 Ombor',
-            'callcenter_operator': '📞 Call Center',
-            'callcenter_supervisor': '📞 Call Center Boshlig\'i'
-        }.get(role, f'🚀 {role.title()}')
-    else:
-        role_display = {
-            'admin': '👑 Админ',
-            'client': '👤 Клиент',
-            'manager': '👨‍💼 Менеджер',
-            'junior_manager': '👨‍💼 Джуниор-менеджер',
-            'controller': '🎛️ Контроллер',
-            'technician': '🔧 Техник',
-            'warehouse': '📦 Склад',
-            'callcenter_operator': '📞 Call Center',
-            'callcenter_supervisor': '📞 Руководитель Call Center'
-        }.get(role, f'🚀 {role.title()}')
-    
-    user_info += f"    🚀 <b>{role_label}:</b> {role_display}\n"
-    user_info += f"    📅 <b>{date_label}:</b> {formatted_date}\n\n"
+    user_info += f"    🚀 <b>Rol:</b> {role_display}\n"
+    user_info += f"    📅 <b>Sana:</b> {formatted_date}\n\n"
     
     return user_info
 
@@ -467,11 +435,9 @@ async def format_user_info(user: dict, index: int, language: str = "uz") -> str:
 async def show_users_page(message: Message, state: FSMContext, page: int = 1, user_type: str = "all"):
     """Foydalanuvchilar sahifasini ko'rsatish"""
     try:
-        lang = await get_user_language(message.from_user.id) or "uz"
-        
         if user_type == "all":
             data = await get_all_users_paginated(page=page, per_page=5)
-            title = "👥 Barcha foydalanuvchilar" if lang == "uz" else "👥 Все пользователи"
+            title = "👥 Barcha foydalanuvchilar"
         elif user_type == "staff":
             # Barcha rollarni olish (client dan boshqa)
             staff_roles = ['admin', 'manager', 'junior_manager', 'controller', 'technician', 'warehouse', 'callcenter_operator', 'callcenter_supervisor']
@@ -481,37 +447,31 @@ async def show_users_page(message: Message, state: FSMContext, page: int = 1, us
             staff_users = [user for user in data['users'] if user['role'] in staff_roles]
             data['users'] = staff_users
             data['total'] = len(staff_users)
-            title = "👤 Xodimlar ro'yxati" if lang == "uz" else "👤 Список сотрудников"
+            title = "👤 Xodimlar ro'yxati"
         elif user_type == "client":
             data = await get_users_by_role_paginated(page=page, per_page=5, role="client")
-            title = "👤 Mijozlar ro'yxati" if lang == "uz" else "👤 Список клиентов"
+            title = "👤 Mijozlar ro'yxati"
         else:
-            error_msg = "❌ Noto'g'ri foydalanuvchi turi!" if lang == "uz" else "❌ Неверный тип пользователя!"
-            await message.answer(error_msg, parse_mode='Markdown')
+            await message.answer("❌ Noto'g'ri foydalanuvchi turi!", parse_mode='Markdown')
             return
 
         if not data['users']:
-            no_users_msg = f"{title}\n\n📭 Foydalanuvchilar topilmadi." if lang == "uz" else f"{title}\n\n📭 Пользователи не найдены."
-            await message.answer(no_users_msg, parse_mode='Markdown')
+            await message.answer(f"{title}\n\n📭 Foydalanuvchilar topilmadi.", parse_mode='Markdown')
             return
 
         # Sarlavha va statistika
         text = f"{title}\n\n"
-        stats_text = f"📊 Jami: {data['total']} ta | Sahifa: {data['page']}/{data['total_pages']}\n\n" if lang == "uz" else f"📊 Всего: {data['total']} | Страница: {data['page']}/{data['total_pages']}\n\n"
-        text += stats_text
-        
+        text += f"📊 Jami: {data['total']} ta | Sahifa: {data['page']}/{data['total_pages']}\n\n"
         if user_type == "client":
-            list_header = "📋 <b>Mijozlar ro'yxati:</b>\n\n" if lang == "uz" else "📋 <b>Список клиентов:</b>\n\n"
+            text += "📋 <b>Mijozlar ro'yxati:</b>\n\n"
         elif user_type == "staff":
-            list_header = "📋 <b>Xodimlar ro'yxati:</b>\n\n" if lang == "uz" else "📋 <b>Список сотрудников:</b>\n\n"
+            text += "📋 <b>Xodimlar ro'yxati:</b>\n\n"
         else:
-            list_header = "📋 <b>Foydalanuvchilar ro'yxati:</b>\n\n" if lang == "uz" else "📋 <b>Список пользователей:</b>\n\n"
-        
-        text += list_header
+            text += "📋 <b>Foydalanuvchilar ro'yxati:</b>\n\n"
         
         # Foydalanuvchilar ro'yxatini formatlash
         for i, user in enumerate(data['users'], 1):
-            text += await format_user_info(user, i, lang)
+            text += format_user_info(user, i)
         
         # Paginatsiya tugmalari
         from keyboards.admin_buttons import get_users_pagination_keyboard
@@ -526,17 +486,13 @@ async def show_users_page(message: Message, state: FSMContext, page: int = 1, us
         await message.answer(text, reply_markup=keyboard, parse_mode='HTML')
         
     except Exception as e:
-        error_msg = f"❌ Xatolik yuz berdi: {str(e)}" if (await get_user_language(message.from_user.id) or "uz") == "uz" else f"❌ Произошла ошибка: {str(e)}"
-        await message.answer(error_msg, parse_mode='Markdown')
+        await message.answer(f"❌ Xatolik yuz berdi: {str(e)}", parse_mode='Markdown')
 
 
 @router.callback_query(F.data.startswith('users_page_'))
 async def handle_users_pagination(callback: CallbackQuery, state: FSMContext):
     """Foydalanuvchilar paginatsiyasini boshqarish"""
     try:
-        # Foydalanuvchi tilini olish
-        lang = await get_user_language(callback.from_user.id)
-        
         # Callback data: users_page_TYPE_PAGE
         parts = callback.data.split('_')
         if len(parts) >= 4:
@@ -547,45 +503,38 @@ async def handle_users_pagination(callback: CallbackQuery, state: FSMContext):
             # Xabar matnini yangilash
             if user_type == "all":
                 data = await get_all_users_paginated(page=page, per_page=5)
-                title = "👥 Barcha foydalanuvchilar" if lang == "uz" else "👥 Все пользователи"
+                title = "👥 Barcha foydalanuvchilar"
             elif user_type == "staff":
                 staff_roles = ['admin', 'manager', 'junior_manager', 'controller', 'technician', 'warehouse', 'callcenter_operator', 'callcenter_supervisor']
                 data = await get_all_users_paginated(page=page, per_page=5)
                 staff_users = [user for user in data['users'] if user['role'] in staff_roles]
                 data['users'] = staff_users
                 data['total'] = len(staff_users)
-                title = "👤 Xodimlar ro'yxati" if lang == "uz" else "👤 Список сотрудников"
+                title = "👤 Xodimlar ro'yxati"
             elif user_type == "client":
                 data = await get_users_by_role_paginated(page=page, per_page=5, role="client")
-                title = "👤 Mijozlar ro'yxati" if lang == "uz" else "👤 Список клиентов"
+                title = "👤 Mijozlar ro'yxati"
             else:
-                error_msg = "❌ Noto'g'ri foydalanuvchi turi!" if lang == "uz" else "❌ Неверный тип пользователя!"
-                await callback.answer(error_msg, show_alert=True)
+                await callback.answer("❌ Noto'g'ri foydalanuvchi turi!", show_alert=True)
                 return
 
             if not data['users']:
-                no_users_msg = f"{title}\n\n📭 Foydalanuvchilar topilmadi." if lang == "uz" else f"{title}\n\n📭 Пользователи не найдены."
-                await callback.message.edit_text(no_users_msg, parse_mode='Markdown')
+                await callback.message.edit_text(f"{title}\n\n📭 Foydalanuvchilar topilmadi.", parse_mode='Markdown')
                 return
 
             # Sarlavha va statistika
             text = f"{title}\n\n"
-            total_text = "Jami" if lang == "uz" else "Всего"
-            page_text = "Sahifa" if lang == "uz" else "Страница"
-            text += f"📊 {total_text}: {data['total']} | {page_text}: {data['page']}/{data['total_pages']}\n\n"
-            
+            text += f"📊 Jami: {data['total']} ta | Sahifa: {data['page']}/{data['total_pages']}\n\n"
             if user_type == "client":
-                list_title = "📋 **Mijozlar ro'yxati:**\n\n" if lang == "uz" else "📋 **Список клиентов:**\n\n"
+                text += "📋 **Mijozlar ro'yxati:**\n\n"
             elif user_type == "staff":
-                list_title = "📋 **Xodimlar ro'yxati:**\n\n" if lang == "uz" else "📋 **Список сотрудников:**\n\n"
+                text += "📋 **Xodimlar ro'yxati:**\n\n"
             else:
-                list_title = "📋 **Foydalanuvchilar ro'yxati:**\n\n" if lang == "uz" else "📋 **Список пользователей:**\n\n"
-            
-            text += list_title
+                text += "📋 **Foydalanuvchilar ro'yxati:**\n\n"
             
             # Foydalanuvchilar ro'yxatini formatlash
             for i, user in enumerate(data['users'], 1):
-                text += await format_user_info(user, i, lang)
+                text += format_user_info(user, i)
             
             # Paginatsiya tugmalari
             from keyboards.admin_buttons import get_users_pagination_keyboard

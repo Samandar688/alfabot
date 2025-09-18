@@ -14,6 +14,12 @@ from database.admin_export import (
     get_admin_saff_orders_for_export,
     get_admin_statistics_for_export,
 )
+from database.warehouse_queries import (
+    get_warehouse_inventory_for_export,
+    get_warehouse_statistics_for_export,
+    get_warehouse_low_stock_materials_for_export,
+    get_warehouse_out_of_stock_materials_for_export,
+)
 from datetime import datetime
 import logging
 from database.language_queries import get_user_language
@@ -109,21 +115,11 @@ async def admin_export_back_types(cb: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "admin_export_end")
 async def admin_export_end(cb: CallbackQuery, state: FSMContext):
     await state.clear()
-    lang = await get_user_language(cb.from_user.id) or "uz"
-    
     try:
         await cb.message.delete()
     except Exception:
         pass
-    
-    # Yangi tilda admin menyusini ko'rsatish
-    from keyboards.admin_buttons import get_admin_main_menu
-    keyboard = get_admin_main_menu(lang)
-    
-    await cb.message.answer(
-        ("✅ Export oynasi yopildi" if lang == "uz" else "✅ Окно экспорта закрыто"),
-        reply_markup=keyboard
-    )
+    lang = await get_user_language(cb.from_user.id) or "uz"
     await cb.answer("Yopildi" if lang == "uz" else "Закрыто")
 
 
@@ -159,6 +155,30 @@ async def admin_export_format(cb: CallbackQuery, state: FSMContext):
             raw_data = await get_admin_saff_orders_for_export()
             title = "Xodim arizalari" if lang == "uz" else "Заявки сотрудников"
             filename_base = "saff_orders"
+        elif export_type == "warehouse_inventory":
+            raw_data = await get_warehouse_inventory_for_export()
+            title = "Ombor inventarizatsiyasi" if lang == "uz" else "Инвентаризация склада"
+            filename_base = "warehouse_inventory"
+            headers = [
+                ("ID" if lang == "uz" else "ID"),
+                ("Nomi" if lang == "uz" else "Название"),
+                ("Seriya raqami" if lang == "uz" else "Серийный №"),
+                ("Miqdor" if lang == "uz" else "Количество"),
+                ("Narx" if lang == "uz" else "Цена"),
+                ("Yaratilgan" if lang == "uz" else "Создано"),
+            ]
+        elif export_type == "warehouse_stats":
+            raw_data = await get_warehouse_statistics_for_export('all')
+            title = "Ombor statistikasi" if lang == "uz" else "Статистика склада"
+            filename_base = "warehouse_statistics"
+        elif export_type == "warehouse_low_stock":
+            raw_data = await get_warehouse_low_stock_materials_for_export()
+            title = "Kam zaxira" if lang == "uz" else "Низкий остаток"
+            filename_base = "warehouse_low_stock"
+        elif export_type == "warehouse_out_of_stock":
+            raw_data = await get_warehouse_out_of_stock_materials_for_export()
+            title = "Zaxira tugagan" if lang == "uz" else "Нет в наличии"
+            filename_base = "warehouse_out_of_stock"
         elif export_type == "statistics":
             stats = await get_admin_statistics_for_export()
             # Flatten to rows
@@ -217,3 +237,49 @@ async def admin_export_format(cb: CallbackQuery, state: FSMContext):
         await cb.message.answer("❌ Eksportda xatolik yuz berdi")
     finally:
         await cb.answer()
+
+
+# Warehouse specific selections -> format selection
+@router.callback_query(F.data == "admin_export_warehouse_inventory")
+async def admin_export_wh_inventory(cb: CallbackQuery, state: FSMContext):
+    await state.update_data(export_type="warehouse_inventory")
+    lang = await get_user_language(cb.from_user.id) or "uz"
+    await cb.message.edit_text(
+        ("📦 <b>Ombor inventarizatsiyasi</b>\n\nFormatni tanlang:" if lang == "uz" else "📦 <b>Инвентаризация склада</b>\n\nВыберите формат:"),
+        reply_markup=get_admin_export_formats_keyboard(lang),
+        parse_mode="HTML",
+    )
+    await cb.answer()
+
+@router.callback_query(F.data == "admin_export_warehouse_stats")
+async def admin_export_wh_stats(cb: CallbackQuery, state: FSMContext):
+    await state.update_data(export_type="warehouse_stats")
+    lang = await get_user_language(cb.from_user.id) or "uz"
+    await cb.message.edit_text(
+        ("📊 <b>Ombor statistikasi</b>\n\nFormatni tanlang:" if lang == "uz" else "📊 <b>Статистика склада</b>\n\nВыберите формат:"),
+        reply_markup=get_admin_export_formats_keyboard(lang),
+        parse_mode="HTML",
+    )
+    await cb.answer()
+
+@router.callback_query(F.data == "admin_export_warehouse_low_stock")
+async def admin_export_wh_low(cb: CallbackQuery, state: FSMContext):
+    await state.update_data(export_type="warehouse_low_stock")
+    lang = await get_user_language(cb.from_user.id) or "uz"
+    await cb.message.edit_text(
+        ("⚠️ <b>Kam zaxira</b>\n\nFormatni tanlang:" if lang == "uz" else "⚠️ <b>Низкий остаток</b>\n\nВыберите формат:"),
+        reply_markup=get_admin_export_formats_keyboard(lang),
+        parse_mode="HTML",
+    )
+    await cb.answer()
+
+@router.callback_query(F.data == "admin_export_warehouse_out_of_stock")
+async def admin_export_wh_oos(cb: CallbackQuery, state: FSMContext):
+    await state.update_data(export_type="warehouse_out_of_stock")
+    lang = await get_user_language(cb.from_user.id) or "uz"
+    await cb.message.edit_text(
+        ("⛔ <b>Zaxira tugagan</b>\n\nFormatni tanlang:" if lang == "uz" else "⛔ <b>Нет в наличии</b>\n\nВыберите формат:"),
+        reply_markup=get_admin_export_formats_keyboard(lang),
+        parse_mode="HTML",
+    )
+    await cb.answer()
