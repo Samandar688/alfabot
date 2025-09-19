@@ -5,8 +5,6 @@ from keyboards.warehouse_buttons import get_warehouse_export_types_keyboard, get
 from database.warehouse_queries import (
     get_warehouse_inventory_for_export,
     get_warehouse_statistics_for_export,
-    get_warehouse_low_stock_materials_for_export,
-    get_warehouse_out_of_stock_materials_for_export
 )
 from utils.export_utils import ExportUtils
 from states.warehouse_states import WarehouseStates
@@ -121,7 +119,7 @@ async def export_format_handler(callback: CallbackQuery, state: FSMContext):
             file_content = ExportUtils.generate_csv(formatted_data)
             filename = ExportUtils.get_filename_with_timestamp(filename_base, "csv")
             document = BufferedInputFile(
-                file_content.getvalue().encode('utf-8'),
+                file_content.getvalue().encode('utf-8-sig'),
                 filename=filename
             )
         elif format_type == "xlsx":

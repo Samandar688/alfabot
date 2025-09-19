@@ -463,57 +463,9 @@ async def get_warehouse_statistics_for_export(period: str = 'all') -> List[Dict[
     finally:
         await conn.close()
 
-async def get_warehouse_low_stock_materials_for_export(threshold: int = 10) -> List[Dict[str, Any]]:
-    """
-    Export uchun kam qolgan materiallar ro'yxatini olish
-    """
-    conn = await asyncpg.connect(settings.DB_URL)
-    try:
-        query = """
-        SELECT 
-            id,
-            name,
-            quantity,
-            price,
-            serial_number,
-            description,
-            created_at,
-            updated_at
-        FROM materials 
-        WHERE quantity <= $1 AND quantity > 0
-        ORDER BY quantity ASC, name ASC
-        """
-        
-        rows = await conn.fetch(query, threshold)
-        return [dict(row) for row in rows]
-    finally:
-        await conn.close()
 
-async def get_warehouse_out_of_stock_materials_for_export() -> List[Dict[str, Any]]:
-    """
-    Export uchun tugagan materiallar ro'yxatini olish
-    """
-    conn = await asyncpg.connect(settings.DB_URL)
-    try:
-        query = """
-        SELECT 
-            id,
-            name,
-            quantity,
-            price,
-            serial_number,
-            description,
-            created_at,
-            updated_at
-        FROM materials 
-        WHERE quantity = 0
-        ORDER BY name ASC
-        """
-        
-        rows = await conn.fetch(query)
-        return [dict(row) for row in rows]
-    finally:
-        await conn.close()
+
+
 
 async def get_warehouse_materials_by_date_range_for_export(start_date: str, end_date: str) -> List[Dict[str, Any]]:
     """

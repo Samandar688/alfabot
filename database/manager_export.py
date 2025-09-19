@@ -29,8 +29,7 @@ async def get_manager_connection_orders_for_export() -> List[Dict[str, Any]]:
             co.rating,
             co.notes,
             co.jm_notes,
-            u2.full_name as manager_name,
-            u2.phone as manager_phone,
+            co.controller_notes,
             ad.akt_number,
             ad.file_path as akt_file_path,
             ad.created_at as akt_created_at,
@@ -39,7 +38,6 @@ async def get_manager_connection_orders_for_export() -> List[Dict[str, Any]]:
             ar.comment as akt_comment
         FROM connection_orders co
         LEFT JOIN users u ON co.user_id = u.id
-        LEFT JOIN users u2 ON co.manager_id = u2.id
         LEFT JOIN tarif t ON co.tarif_id = t.id
         LEFT JOIN akt_documents ad ON co.id = ad.request_id AND ad.request_type = 'connection'
         LEFT JOIN akt_ratings ar ON co.id = ar.request_id AND ar.request_type = 'connection'
