@@ -5,7 +5,6 @@ from . import (
     connection_order_cc,
     inbox,
     language,
-    orders,
     statistics,
     technician_order_cc,
 )
@@ -17,7 +16,6 @@ router.include_routers(
     connection_order_cc.router,
     inbox.router,
     language.router,
-    orders.router,
     statistics.router,
     technician_order_cc.router,
 )

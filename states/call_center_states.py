@@ -15,3 +15,6 @@ class SaffTechnicianOrderStates(StatesGroup):
     selecting_region = State()
     entering_address = State()
     confirming_connection = State()
+
+class clientSearchStates(StatesGroup):
+    waiting_client_phone = State()

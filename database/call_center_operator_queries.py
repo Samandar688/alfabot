@@ -25,7 +25,7 @@ async def find_user_by_phone(phone: str) -> Optional[Dict[str, Any]]:
         row = await conn.fetchrow(
             """
             SELECT id, telegram_id, full_name, username, phone, language, region, address,
-                   abonent_id, is_blocked
+                   abonent_id
             FROM users
             WHERE regexp_replace(phone, '[^0-9]', '', 'g')
                   = regexp_replace($1,   '[^0-9]', '', 'g')

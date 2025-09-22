@@ -79,12 +79,15 @@ class TechnicianApplication(BaseModel):
     latitude: Optional[float] = None
     description: Optional[str] = None
     description_ish: Optional[str] = None
+    description_operator: Optional[str] = None
     status: Dict[str, str] = field(
         default_factory=lambda: {
             "in_controller": "Controller Assigned",
             "between_controller_technician": "Between Controller and Technician role",
             "in_technician": "Technician Assigned",
             "in_technician_work": "Technician Working",
+            "in_call_center_supervisor": "Call Center Supervisor Assigned",
+            "in_call_center_operator": "Call Center Operator Assigned",
             "completed": "Completed",
         }
     )
