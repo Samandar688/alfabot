@@ -23,25 +23,11 @@ class ExportUtils:
     
     @staticmethod
     def _normalize_string(value: Any) -> str:
-        """Fix common UTF-8/CP1251 mojibake like 'РњРµ...' by attempting latin1→utf-8 roundtrip.
-        Returns a safe UTF-8 string without raising on failures.
-        """
+        """Convert any value to string safely."""
         try:
             if value is None:
                 return ""
-            s = str(value)
-            # Heuristic: if string contains typical mojibake markers, try fix
-            if any(ch in s for ch in ("Ð", "Ñ", "�", "Р", "Ќ", "Ѓ")):
-                try:
-                    # Attempt to reverse UTF-8 shown as latin1
-                    return s.encode('latin1', errors='ignore').decode('utf-8', errors='ignore')
-                except Exception:
-                    try:
-                        # Attempt to reverse UTF-8 shown as cp1251 (Windows-1251)
-                        return s.encode('cp1251', errors='ignore').decode('utf-8', errors='ignore')
-                    except Exception:
-                        return s
-            return s
+            return str(value)
         except Exception:
             return ""
     
@@ -63,9 +49,7 @@ class ExportUtils:
     
     @staticmethod
     def to_csv(data: List[Dict[str, Any]], headers: List[str] = None) -> io.StringIO:
-        """Generate CSV format from data with optional custom headers.
-        Note: Do NOT write BOM here; callers should encode with 'utf-8-sig' when sending bytes.
-        """
+        """Generate CSV format from data with optional custom headers."""
         if not data:
             return io.StringIO()
             
@@ -229,7 +213,7 @@ class ExportUtils:
     
     @staticmethod
     def generate_pdf(data: List[Dict[str, Any]], title: str = "Export Hisoboti") -> io.BytesIO:
-        """Generate PDF document from data with proper UTF-8 support"""
+        """Generate PDF document from data with proper Unicode support"""
         from reportlab.pdfbase import pdfmetrics
         from reportlab.pdfbase.ttfonts import TTFont
         from reportlab.lib.fonts import addMapping
@@ -238,7 +222,7 @@ class ExportUtils:
         output = io.BytesIO()
         doc = SimpleDocTemplate(output, pagesize=A4)
         
-        # Register DejaVu Sans font for UTF-8 support (fallback to default if not available)
+        # Register DejaVu Sans font for better Unicode support (fallback to default if not available)
         try:
             # Try to register DejaVu Sans font for better Unicode support
             font_path = os.path.join(os.path.dirname(__file__), 'fonts', 'DejaVuSans.ttf')
@@ -252,7 +236,7 @@ class ExportUtils:
             # Fallback to default font
             font_name = 'Helvetica'
         
-        # Styles with UTF-8 support
+        # Styles for better Unicode support
         styles = getSampleStyleSheet()
         title_style = ParagraphStyle(
             'CustomTitle',
@@ -356,8 +340,7 @@ class ExportUtils:
         try:
             if format_type == "csv":
                 csv_output = self.to_csv(orders_data)
-                # Encode with UTF-8 BOM so Excel displays Cyrillic correctly
-                return csv_output.getvalue().encode('utf-8-sig')
+                return csv_output.getvalue().encode('utf-8')
             elif format_type == "xlsx":
                 excel_output = self.generate_excel(orders_data, "Orders", title)
                 return excel_output.getvalue()
@@ -434,8 +417,7 @@ class ExportUtils:
             # Generate export using the same methods as orders
             if format_type == "csv":
                 csv_output = self.to_csv(stats_list)
-                # Encode with UTF-8 BOM so Excel displays Cyrillic correctly
-                return csv_output.getvalue().encode('utf-8-sig')
+                return csv_output.getvalue().encode('utf-8')
             elif format_type == "xlsx":
                 excel_output = self.generate_excel(stats_list, "Statistics", title)
                 return excel_output.getvalue()

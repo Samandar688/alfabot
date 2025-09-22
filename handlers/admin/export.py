@@ -198,7 +198,7 @@ async def admin_export_format(cb: CallbackQuery, state: FSMContext):
 
         if format_type == "csv":
             file_data = export_utils.to_csv(raw_data, headers=headers if headers else None)
-            file_to_send = BufferedInputFile(file_data.getvalue().encode("utf-8-sig"), filename=f"{filename_base}_{int(datetime.now().timestamp())}.csv")
+            file_to_send = BufferedInputFile(file_data.getvalue(), filename=f"{filename_base}_{int(datetime.now().timestamp())}.csv")
         elif format_type == "xlsx":
             file_data = export_utils.generate_excel(raw_data, sheet_name="export", title=title)
             file_to_send = BufferedInputFile(file_data.getvalue(), filename=f"{filename_base}_{int(datetime.now().timestamp())}.xlsx")

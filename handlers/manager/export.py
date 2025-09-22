@@ -232,7 +232,7 @@ async def export_format_handler(callback: CallbackQuery, state: FSMContext):
                     raise ValueError("No data to export")
                 file_data = export_utils.to_csv(raw_data, headers=headers)
                 file_to_send = BufferedInputFile(
-                    file_data.getvalue().encode('utf-8-sig'), 
+                    file_data.getvalue(), 
                     filename=f"export_{int(datetime.now().timestamp())}.csv"
                 )
             elif format_type == "xlsx":

@@ -119,7 +119,7 @@ async def export_format_handler(callback: CallbackQuery, state: FSMContext):
             file_content = ExportUtils.generate_csv(formatted_data)
             filename = ExportUtils.get_filename_with_timestamp(filename_base, "csv")
             document = BufferedInputFile(
-                file_content.getvalue().encode('utf-8-sig'),
+                file_content.getvalue(),
                 filename=filename
             )
         elif format_type == "xlsx":
