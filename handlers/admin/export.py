@@ -17,8 +17,6 @@ from database.admin_export import (
 from database.warehouse_queries import (
     get_warehouse_inventory_for_export,
     get_warehouse_statistics_for_export,
-    get_warehouse_low_stock_materials_for_export,
-    get_warehouse_out_of_stock_materials_for_export,
 )
 from datetime import datetime
 import logging
@@ -171,14 +169,6 @@ async def admin_export_format(cb: CallbackQuery, state: FSMContext):
             raw_data = await get_warehouse_statistics_for_export('all')
             title = "Ombor statistikasi" if lang == "uz" else "Статистика склада"
             filename_base = "warehouse_statistics"
-        elif export_type == "warehouse_low_stock":
-            raw_data = await get_warehouse_low_stock_materials_for_export()
-            title = "Kam zaxira" if lang == "uz" else "Низкий остаток"
-            filename_base = "warehouse_low_stock"
-        elif export_type == "warehouse_out_of_stock":
-            raw_data = await get_warehouse_out_of_stock_materials_for_export()
-            title = "Zaxira tugagan" if lang == "uz" else "Нет в наличии"
-            filename_base = "warehouse_out_of_stock"
         elif export_type == "statistics":
             stats = await get_admin_statistics_for_export()
             # Flatten to rows
@@ -208,7 +198,7 @@ async def admin_export_format(cb: CallbackQuery, state: FSMContext):
 
         if format_type == "csv":
             file_data = export_utils.to_csv(raw_data, headers=headers if headers else None)
-            file_to_send = BufferedInputFile(file_data.getvalue().encode("utf-8"), filename=f"{filename_base}_{int(datetime.now().timestamp())}.csv")
+            file_to_send = BufferedInputFile(file_data.getvalue(), filename=f"{filename_base}_{int(datetime.now().timestamp())}.csv")
         elif format_type == "xlsx":
             file_data = export_utils.generate_excel(raw_data, sheet_name="export", title=title)
             file_to_send = BufferedInputFile(file_data.getvalue(), filename=f"{filename_base}_{int(datetime.now().timestamp())}.xlsx")

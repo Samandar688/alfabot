@@ -9,7 +9,7 @@ import asyncio
 logger = logging.getLogger(__name__)
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill
-from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib.pagesizes import letter, A4, landscape
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
@@ -20,6 +20,16 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 class ExportUtils:
     """Utility class for exporting data in various formats"""
+    
+    @staticmethod
+    def _normalize_string(value: Any) -> str:
+        """Convert any value to string safely."""
+        try:
+            if value is None:
+                return ""
+            return str(value)
+        except Exception:
+            return ""
     
     @staticmethod
     def generate_csv(data: List[Dict[str, Any]], filename: str = None) -> io.StringIO:
@@ -33,6 +43,47 @@ class ExportUtils:
             writer = csv.DictWriter(output, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(data)
+        
+        output.seek(0)
+        return output
+    
+    @staticmethod
+    def to_csv(data: List[Dict[str, Any]], headers: List[str] = None) -> io.StringIO:
+        """Generate CSV format from data with optional custom headers."""
+        if not data:
+            return io.StringIO()
+            
+        output = io.StringIO()
+        
+        if data:
+            # Use custom headers if provided, otherwise use data keys
+            if headers:
+                fieldnames = headers
+                # Create new data with only the specified headers
+                filtered_data = []
+                for row in data:
+                    filtered_row = {}
+                    for header in headers:
+                        # Try to find matching key in row (case-insensitive)
+                        value = None
+                        for key, val in row.items():
+                            if str(key).lower() == str(header).lower():
+                                value = val
+                                break
+                        filtered_row[header] = value if value is not None else ""
+                    filtered_data.append(filtered_row)
+                data = filtered_data
+            else:
+                fieldnames = data[0].keys()
+            
+            writer = csv.DictWriter(output, fieldnames=fieldnames, lineterminator='\n')
+            # Normalize header names
+            normalized_header_row = {h: ExportUtils._normalize_string(h) for h in fieldnames}
+            writer.writerow(normalized_header_row)
+            # Normalize each row value
+            for row in data:
+                normalized_row = {k: ExportUtils._normalize_string(row.get(k, "")) for k in fieldnames}
+                writer.writerow(normalized_row)
         
         output.seek(0)
         return output
@@ -69,7 +120,7 @@ class ExportUtils:
         
         if data:
             # Add headers
-            headers = list(data[0].keys())
+            headers = [ExportUtils._normalize_string(h) for h in list(data[0].keys())]
             for col_num, header in enumerate(headers, 1):
                 cell = ws.cell(row=current_row, column=col_num, value=header)
                 cell.font = Font(bold=True)
@@ -81,7 +132,7 @@ class ExportUtils:
             # Add data rows
             for row_data in data:
                 for col_num, value in enumerate(row_data.values(), 1):
-                    ws.cell(row=current_row, column=col_num, value=value)
+                    ws.cell(row=current_row, column=col_num, value=ExportUtils._normalize_string(value))
                 current_row += 1
             
             # Auto-adjust column widths
@@ -99,25 +150,20 @@ class ExportUtils:
                         cell_value = ws.cell(row=row_num, column=col_num).value
                         if cell_value is not None:
                             cell_str = str(cell_value)
-                            # Skip very long content to prevent performance issues
                             if len(cell_str) > 1000:
                                 cell_str = cell_str[:1000] + '...'
                             cell_length = len(cell_str)
                             if cell_length > max_length:
-                                max_length = min(cell_length, 100)  # Limit max width
+                                max_length = min(cell_length, 100)  
                     except Exception as e:
-                        # Skip any problematic cells
                         continue
                 
-                # Set column width with safe column letter
                 try:
                     from openpyxl.utils import get_column_letter
                     column_letter = get_column_letter(col_num)
-                    # Set reasonable width limits (between 10 and 50)
                     adjusted_width = min(max(max_length + 2, 10), 50)
                     ws.column_dimensions[column_letter].width = adjusted_width
                 except Exception as e:
-                    # If we can't set the width, just continue
                     pass        
         output = io.BytesIO()
         wb.save(output)
@@ -130,7 +176,7 @@ class ExportUtils:
         doc = Document()
         
         # Add title
-        title_paragraph = doc.add_heading(title, level=1)
+        title_paragraph = doc.add_heading(ExportUtils._normalize_string(title), level=1)
         title_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
         
         # Add generation date
@@ -141,7 +187,7 @@ class ExportUtils:
         
         if data:
             # Create table
-            headers = list(data[0].keys())
+            headers = [ExportUtils._normalize_string(h) for h in list(data[0].keys())]
             table = doc.add_table(rows=1, cols=len(headers))
             table.style = 'Table Grid'
             
@@ -155,7 +201,8 @@ class ExportUtils:
             for row_data in data:
                 row_cells = table.add_row().cells
                 for i, value in enumerate(row_data.values()):
-                    row_cells[i].text = str(value) if value is not None else ""
+                    normalized_value = ExportUtils._normalize_string(value)
+                    row_cells[i].text = normalized_value if normalized_value is not None else ""
         else:
             doc.add_paragraph("Export uchun ma'lumotlar mavjud emas.")
         
@@ -166,51 +213,119 @@ class ExportUtils:
     
     @staticmethod
     def generate_pdf(data: List[Dict[str, Any]], title: str = "Export Hisoboti") -> io.BytesIO:
-        """Generate PDF document from data"""
-        output = io.BytesIO()
-        doc = SimpleDocTemplate(output, pagesize=A4)
+        """Generate PDF document from data with proper Unicode support"""
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        from reportlab.lib.fonts import addMapping
+        import os
         
-        # Styles
+        output = io.BytesIO()
+        # Use landscape to give more horizontal space for many columns
+        doc = SimpleDocTemplate(output, pagesize=landscape(A4))
+        
+        # Register a Unicode-capable TTF font for Cyrillic/Unicode text where possible
+        try:
+            candidates = []
+            # Project-local font (recommended to ship this file)
+            candidates.append(os.path.join(os.path.dirname(__file__), 'fonts', 'DejaVuSans.ttf'))
+            # Common Windows fonts
+            candidates += [
+                r"C:\\Windows\\Fonts\\DejaVuSans.ttf",
+                r"C:\\Windows\\Fonts\\NotoSans-Regular.ttf",
+                r"C:\\Windows\\Fonts\\arial.ttf",
+            ]
+            # Common Linux fonts
+            candidates += [
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+                "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+            ]
+            font_name = 'Helvetica'
+            for p in candidates:
+                if os.path.exists(p):
+                    pdfmetrics.registerFont(TTFont('AppUnicode', p))
+                    font_name = 'AppUnicode'
+                    break
+        except:
+            font_name = 'Helvetica'
+        
+        # Styles for better Unicode support
         styles = getSampleStyleSheet()
         title_style = ParagraphStyle(
             'CustomTitle',
             parent=styles['Heading1'],
             fontSize=18,
             spaceAfter=30,
-            alignment=1  # Center alignment
+            alignment=1,  # Center alignment
+            fontName=font_name
+        )
+        
+        normal_style = ParagraphStyle(
+            'CustomNormal',
+            parent=styles['Normal'],
+            fontName=font_name,
+            fontSize=9,
+            leading=11,
+            wordWrap='CJK'
+        )
+        header_style = ParagraphStyle(
+            'CustomHeader',
+            parent=styles['Normal'],
+            fontName=font_name,
+            fontSize=10,
+            leading=12,
+            wordWrap='CJK'
         )
         
         story = []
         
         # Add title
-        story.append(Paragraph(title, title_style))
-        story.append(Paragraph(f"Yaratilgan sana: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", styles['Normal']))
+        story.append(Paragraph(ExportUtils._normalize_string(title), title_style))
+        story.append(Paragraph(f"Yaratilgan sana: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", normal_style))
         story.append(Spacer(1, 20))
         
         if data:
-            # Prepare table data
-            headers = list(data[0].keys())
-            table_data = [headers]
+            # Prepare table data with proper encoding
+            headers = [ExportUtils._normalize_string(h) for h in list(data[0].keys())]
+            table_data = [[Paragraph(str(h), header_style) for h in headers]]
             
             for row in data:
-                table_data.append([str(value) if value is not None else "" for value in row.values()])
+                row_values = []
+                for value in row.values():
+                    normalized = ExportUtils._normalize_string(value)
+                    row_values.append(Paragraph(normalized if normalized is not None else "", normal_style))
+                table_data.append(row_values)
             
+            # Fit columns to available width
+            available_width = doc.width
+            num_cols = max(1, len(headers))
+            # Minimum reasonable width per column
+            min_w = 50
+            base_w = max(min_w, available_width / num_cols)
+            col_widths = [base_w] * num_cols
+
             # Create table
-            table = Table(table_data)
+            table = Table(table_data, colWidths=col_widths, repeatRows=1)
             table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('FONTNAME', (0, 0), (-1, -1), font_name),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('FONTSIZE', (0, 1), (-1, -1), 9),
                 ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
                 ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('LEFTPADDING', (0, 0), (-1, -1), 3),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+                ('TOPPADDING', (0, 0), (-1, -1), 3),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ]))
             
             story.append(table)
         else:
-            story.append(Paragraph("Export uchun ma'lumotlar mavjud emas.", styles['Normal']))
+            story.append(Paragraph("Export uchun ma'lumotlar mavjud emas.", normal_style))
         
         doc.build(story)
         output.seek(0)
@@ -261,8 +376,9 @@ class ExportUtils:
         """Generate export file for orders data"""
         try:
             if format_type == "csv":
-                csv_output = self.generate_csv(orders_data)
-                return csv_output.getvalue().encode('utf-8')
+                csv_output = self.to_csv(orders_data)
+                # Use BOM so Excel opens UTF-8 correctly
+                return csv_output.getvalue().encode('utf-8-sig')
             elif format_type == "xlsx":
                 excel_output = self.generate_excel(orders_data, "Orders", title)
                 return excel_output.getvalue()
@@ -338,8 +454,9 @@ class ExportUtils:
             
             # Generate export using the same methods as orders
             if format_type == "csv":
-                csv_output = self.generate_csv(stats_list)
-                return csv_output.getvalue().encode('utf-8')
+                csv_output = self.to_csv(stats_list)
+                # Use BOM so Excel opens UTF-8 correctly
+                return csv_output.getvalue().encode('utf-8-sig')
             elif format_type == "xlsx":
                 excel_output = self.generate_excel(stats_list, "Statistics", title)
                 return excel_output.getvalue()

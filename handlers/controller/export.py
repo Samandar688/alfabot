@@ -414,7 +414,7 @@ async def generate_csv(data: list, headers: list, title: str, filename: str) -> 
         writer.writerow(row)
     
     return BufferedInputFile(
-        file=output.getvalue().encode('utf-8'),
+        file=output.getvalue(),
         filename=f"{filename}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
     )
 

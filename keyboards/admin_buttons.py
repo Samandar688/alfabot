@@ -289,10 +289,6 @@ def get_admin_export_types_keyboard(lang: str = "uz") -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(text="📊 Ombor statistikasi", callback_data="admin_export_warehouse_stats"),
-                InlineKeyboardButton(text="⚠️ Kam zaxira", callback_data="admin_export_warehouse_low_stock"),
-            ],
-            [
-                InlineKeyboardButton(text="⛔ Zaxira tugagan", callback_data="admin_export_warehouse_out_of_stock"),
                 InlineKeyboardButton(text="📊 Statistika", callback_data="admin_export_statistics"),
             ],
             [InlineKeyboardButton(text="🚫 Yopish", callback_data="admin_export_end")],
@@ -313,10 +309,6 @@ def get_admin_export_types_keyboard(lang: str = "uz") -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(text="📊 Статистика склада", callback_data="admin_export_warehouse_stats"),
-                InlineKeyboardButton(text="⚠️ Низкий остаток", callback_data="admin_export_warehouse_low_stock"),
-            ],
-            [
-                InlineKeyboardButton(text="⛔ Нет в наличии", callback_data="admin_export_warehouse_out_of_stock"),
                 InlineKeyboardButton(text="📊 Статистика", callback_data="admin_export_statistics"),
             ],
             [InlineKeyboardButton(text="🚫 Закрыть", callback_data="admin_export_end")],

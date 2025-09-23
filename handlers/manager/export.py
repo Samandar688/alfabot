@@ -126,75 +126,69 @@ async def export_format_handler(callback: CallbackQuery, state: FSMContext):
             
         elif export_type == "statistics":
             stats = await get_manager_statistics_for_export()
-            raw_data = []
             title = "Statistika hisoboti"
             filename_base = "statistika"
-            
-            def add_section(title):
-                nonlocal raw_data
-                raw_data.append(["", ""])
-                raw_data.append([f"🔹 {title.upper()}", ""])
-                raw_data.append(["-" * 30, "-" * 30])
-            
-            def add_row(label, value, indent=0):
-                nonlocal raw_data
-                prefix = "  " * indent
-                raw_data.append([f"{prefix}{label}", str(value) if value is not None else "0"])
-            
-            # 1. Asosiy statistika
+
+            headers = ["Ko'rsatkich", "Qiymat"]
+            raw_data = []
+
+            def add_row_dict(label: str, value: str):
+                raw_data.append({headers[0]: label, headers[1]: value})
+
+            def add_section(title_text: str):
+                # blank line, section header, divider
+                raw_data.append({headers[0]: "", headers[1]: ""})
+                raw_data.append({headers[0]: f"🔹 {title_text.upper()}", headers[1]: ""})
+                raw_data.append({headers[0]: "-" * 30, headers[1]: "-" * 30})
+
+            # 1) Umumiy statistika
             add_section("Umumiy statistika")
-            add_row("📊 Jami buyurtmalar:", stats['summary']['total_orders'])
-            add_row("🆕 Yangi arizalar:", stats['summary']['new_orders'])
-            add_row("🔄 Jarayondagi arizalar:", stats['summary']['in_progress_orders'])
-            add_row("✅ Yakunlangan arizalar:", stats['summary']['completed_orders'])
-            add_row("📈 Yakunlangan arizalar foizi:", f"{stats['summary']['completion_rate']}%")
-            add_row("👥 Yagona mijozlar:", stats['summary']['unique_clients'])
-            add_row("📋 Foydalanilgan tarif rejalari:", stats['summary']['unique_tariffs_used'])
-            
-            # 2. Menejerlar bo'yicha statistika
+            add_row_dict("📊 Jami buyurtmalar:", str(stats['summary']['total_orders']))
+            add_row_dict("🆕 Yangi arizalar:", str(stats['summary']['new_orders']))
+            add_row_dict("🔄 Jarayondagi arizalar:", str(stats['summary']['in_progress_orders']))
+            add_row_dict("✅ Yakunlangan arizalar:", str(stats['summary']['completed_orders']))
+            add_row_dict("📈 Yakunlangan arizalar foizi:", f"{stats['summary']['completion_rate']}%")
+            add_row_dict("👥 Yagona mijozlar:", str(stats['summary']['unique_clients']))
+            add_row_dict("📋 Foydalanilgan tarif rejalari:", str(stats['summary']['unique_tariffs_used']))
+
+            # 2) Menejerlar bo'yicha statistika
             if stats['by_manager']:
                 add_section("Menejerlar bo'yicha statistika")
                 for i, manager in enumerate(stats['by_manager'], 1):
-                    manager_name = f"👤 {i}. {manager['manager_name']}"
-                    phone = manager['manager_phone'] or 'Tel. yo\'q'
-                    add_row(manager_name, "", 0)
-                    add_row("  📞 Telefon:", phone, 1)
-                    add_row("  📊 Jami buyurtmalar:", manager['total_orders'], 1)
-                    add_row("  ✅ Yakunlangan:", manager['completed_orders'], 1)
-                    raw_data.append(["", ""])  # Empty row after each manager
-            
-            # 3. Oylik statistika
+                    manager_title = f"👤 {i}. {manager['manager_name']}"
+                    phone = manager['manager_phone'] or "Tel. yo'q"
+                    add_row_dict(manager_title, "")
+                    add_row_dict("  📞 Telefon:", str(phone))
+                    add_row_dict("  📊 Jami buyurtmalar:", str(manager['total_orders']))
+                    add_row_dict("  ✅ Yakunlangan:", str(manager['completed_orders']))
+                    raw_data.append({headers[0]: "", headers[1]: ""})
+
+            # 3) Oylik statistika
             if stats['monthly_trends']:
                 add_section("Oylik statistika (6 oy)")
                 for month_data in stats['monthly_trends']:
                     month = month_data['month']
-                    add_row(f"🗓️ {month}:", "", 0)
-                    add_row("  📊 Jami:", month_data['total_orders'], 1)
-                    add_row("  🆕 Yangi:", month_data['new_orders'], 1)
-                    add_row("  ✅ Yakunlangan:", month_data['completed_orders'], 1)
-            
-            # 4. Tarif rejalari bo'yicha statistika
+                    add_row_dict(f"🗓️ {month}:", "")
+                    add_row_dict("  📊 Jami:", str(month_data['total_orders']))
+                    add_row_dict("  🆕 Yangi:", str(month_data['new_orders']))
+                    add_row_dict("  ✅ Yakunlangan:", str(month_data['completed_orders']))
+
+            # 4) Tarif rejalari bo'yicha statistika
             if stats['by_tariff']:
                 add_section("Tarif rejalari bo'yicha statistika")
                 for tariff in stats['by_tariff']:
-                    add_row(f"📋 {tariff['tariff_name']}", "", 0)
-                    add_row("  📊 Buyurtmalar soni:", tariff['total_orders'], 1)
-                    add_row("  👥 Mijozlar soni:", tariff['unique_clients'], 1)
-            
-            # 5. So'nggi faollik
+                    add_row_dict(f"📋 {tariff['tariff_name']}", "")
+                    add_row_dict("  📊 Buyurtmalar soni:", str(tariff['total_orders']))
+                    add_row_dict("  👥 Mijozlar soni:", str(tariff['unique_clients']))
+
+            # 5) So'nggi faollik
             if stats['recent_activity']:
                 add_section("So'nggi faollik (30 kun)")
                 for activity in stats['recent_activity']:
                     if activity['recent_orders'] > 0:
                         last_active = activity['last_activity'].strftime('%Y-%m-%d')
-                        add_row(
-                            f"👤 {activity['manager_name']}",
-                            f"📅 So'nggi: {last_active}",
-                            0
-                        )
-                        add_row("  📊 Arizalar soni:", activity['recent_orders'], 1)
-                
-            headers = ["Ko'rsatkich", "Qiymat"]
+                        add_row_dict(f"👤 {activity['manager_name']}", f"📅 So'nggi: {last_active}")
+                        add_row_dict("  📊 Arizalar soni:", str(activity['recent_orders']))
             
         elif export_type == "employees":
             raw_data = await get_manager_employees_for_export()
@@ -215,14 +209,17 @@ async def export_format_handler(callback: CallbackQuery, state: FSMContext):
         # Ensure data is in the correct format (list of dicts)
         if not isinstance(raw_data, list):
             raw_data = [raw_data] if raw_data is not None else []
-            
+
         if raw_data and not isinstance(raw_data[0], dict):
-            # If raw_data is a list of non-dict items, convert to list of dicts
-            if all(hasattr(item, '_asdict') for item in raw_data):
-                # Handle SQLAlchemy/asyncpg row objects
+            # If we have headers and rows are sequences, map by headers
+            if 'headers' in locals() and headers and isinstance(raw_data[0], (list, tuple)):
+                raw_data = [
+                    {headers[i]: (row[i] if i < len(row) else "") for i in range(len(headers))}
+                    for row in raw_data
+                ]
+            elif all(hasattr(item, '_asdict') for item in raw_data):
                 raw_data = [dict(row) for row in raw_data]
             else:
-                # Handle simple lists
                 raw_data = [{"value": str(item)} for item in raw_data]
         
         # Generate file based on format
@@ -235,7 +232,7 @@ async def export_format_handler(callback: CallbackQuery, state: FSMContext):
                     raise ValueError("No data to export")
                 file_data = export_utils.to_csv(raw_data, headers=headers)
                 file_to_send = BufferedInputFile(
-                    file_data.getvalue().encode('utf-8'), 
+                    file_data.getvalue(), 
                     filename=f"export_{int(datetime.now().timestamp())}.csv"
                 )
             elif format_type == "xlsx":
