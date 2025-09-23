@@ -105,37 +105,63 @@ def get_client_tariff_selection_keyboard(lang: str = 'uz') -> InlineKeyboardMark
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def get_client_regions_keyboard(lang: str = 'uz') -> InlineKeyboardMarkup:
-    """Regions selection keyboard for client"""
-    keyboard = [
-        [
-            InlineKeyboardButton(text="Toshkent shahri", callback_data="region_toshkent_city"),
-            InlineKeyboardButton(text="Toshkent viloyati", callback_data="region_toshkent_region")
-        ],
-        [
-            InlineKeyboardButton(text="Andijon", callback_data="region_andijon"),
-            InlineKeyboardButton(text="Farg'ona", callback_data="region_fergana")
-        ],
-        [
-            InlineKeyboardButton(text="Namangan", callback_data="region_namangan"),
-            InlineKeyboardButton(text="Sirdaryo", callback_data="region_sirdaryo")
-        ],
-        [
-            InlineKeyboardButton(text="Jizzax", callback_data="region_jizzax"),
-            InlineKeyboardButton(text="Samarqand", callback_data="region_samarkand")
-        ],
-        [
-            InlineKeyboardButton(text="Buxoro", callback_data="region_bukhara"),
-            InlineKeyboardButton(text="Navoiy", callback_data="region_navoi")
-        ],
-        [
-            InlineKeyboardButton(text="Qashqadaryo", callback_data="region_kashkadarya"),
-            InlineKeyboardButton(text="Surxondaryo", callback_data="region_surkhandarya")
-        ],
-        [
-            InlineKeyboardButton(text="Xorazm", callback_data="region_khorezm"),
-            InlineKeyboardButton(text="Qoraqalpog'iston", callback_data="region_karakalpakstan")
-        ]
+    """Regions selection keyboard for client (UZ/RU labels, stable callback_data)."""
+
+    labels_uz = {
+        "toshkent_city": "Toshkent shahri",
+        "toshkent_region": "Toshkent viloyati",
+        "andijon": "Andijon",
+        "fergana": "Farg'ona",
+        "namangan": "Namangan",
+        "sirdaryo": "Sirdaryo",
+        "jizzax": "Jizzax",
+        "samarkand": "Samarqand",
+        "bukhara": "Buxoro",
+        "navoi": "Navoiy",
+        "kashkadarya": "Qashqadaryo",
+        "surkhandarya": "Surxondaryo",
+        "khorezm": "Xorazm",
+        "karakalpakstan": "Qoraqalpog'iston",
+    }
+
+    labels_ru = {
+        "toshkent_city": "г. Ташкент",
+        "toshkent_region": "Ташкентская область",
+        "andijon": "Андижан",
+        "fergana": "Фергана",
+        "namangan": "Наманган",
+        "sirdaryo": "Сырдарья",
+        "jizzax": "Джизак",
+        "samarkand": "Самарканд",
+        "bukhara": "Бухара",
+        "navoi": "Навои",
+        "kashkadarya": "Кашкадарья",
+        "surkhandarya": "Сурхандарья",
+        "khorezm": "Хорезм",
+        "karakalpakstan": "Каракалпакстан",
+    }
+
+    L = labels_ru if lang == 'ru' else labels_uz
+
+    rows = [
+        [("toshkent_city",), ("toshkent_region",)],
+        [("andijon",), ("fergana",)],
+        [("namangan",), ("sirdaryo",)],
+        [("jizzax",), ("samarkand",)],
+        [("bukhara",), ("navoi",)],
+        [("kashkadarya",), ("surkhandarya",)],
+        [("khorezm",), ("karakalpakstan",)],
     ]
+
+    keyboard = []
+    for row in rows:
+        keyboard.append([
+            InlineKeyboardButton(
+                text=L[key],
+                callback_data=f"region_{key}"
+            ) for (key,) in row
+        ])
+
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def get_contact_options_keyboard(lang: str = "uz"):
@@ -171,90 +197,135 @@ def get_client_profile_reply_keyboard(lang: str = 'uz') -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
 
 
-def get_smart_service_categories_keyboard(lang="uz"):
-    """SmartService kategoriyalarini tanlash klaviaturasi"""
-    categories = [
+def get_smart_service_categories_keyboard(lang: str = "uz") -> InlineKeyboardMarkup:
+    """SmartService kategoriyalarini tanlash klaviaturasi (uz/ru)"""
+    categories_uz = [
         ("🏠 Aqlli uy va avtomatlashtirilgan xizmatlar", "cat_smart_home"),
         ("🔒 Xavfsizlik va kuzatuv tizimlari", "cat_security"),
         ("🌐 Internet va tarmoq xizmatlari", "cat_internet"),
         ("⚡ Energiya va yashil texnologiyalar", "cat_energy"),
         ("📺 Multimediya va aloqa tizimlari", "cat_multimedia"),
-        ("🔧 Maxsus va qo'shimcha xizmatlar", "cat_special")
+        ("🔧 Maxsus va qo'shimcha xizmatlar", "cat_special"),
     ]
-    
-    keyboard = []
-    for text, callback_data in categories:
-        keyboard.append([InlineKeyboardButton(text=text, callback_data=callback_data)])
-    
+    categories_ru = [
+        ("🏠 Умный дом и автоматизация", "cat_smart_home"),
+        ("🔒 Безопасность и видеонаблюдение", "cat_security"),
+        ("🌐 Интернет и сети", "cat_internet"),
+        ("⚡ Энергия и зелёные технологии", "cat_energy"),
+        ("📺 Мультимедиа и коммуникации", "cat_multimedia"),
+        ("🔧 Специальные и доп. услуги", "cat_special"),
+    ]
+    categories = categories_ru if lang == "ru" else categories_uz
+
+    keyboard = [[InlineKeyboardButton(text=text, callback_data=cb)] for text, cb in categories]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-def get_smart_service_types_keyboard(category, lang="uz"):
-    """Tanlangan kategoriya bo'yicha xizmat turlarini ko'rsatish"""
-    service_types = {
-        "aqlli_avtomatlashtirilgan_xizmatlar": [
-            ("1) Aqlli uy tizimlarini o'rnatish va sozlash", "srv_smart_home_setup"),
-            ("2) Aqlli yoritish (Smart Lighting) tizimlari", "srv_smart_lighting"),
-            ("3) Aqlli termostat va iqlim nazarati tizimlari", "srv_smart_thermostat"),
-            ("4) Smart Lock - internet orqali boshqariladigan eshik qulfi tizimlari", "srv_smart_lock"),
-            ("5) Aqlli rozetalar va energiya monitoring tizimlari", "srv_smart_outlets"),
-            ("6) Uyni masofadan boshqarish qurilmalari yagona uzim orqali boshqarish", "srv_remote_control"),
-            ("7) Aqlli pardalari va jaluz tizimlari", "srv_smart_curtains"),
-            ("8) Aqlli malahiy texnika integratsiyasi", "srv_appliance_integration")
-        ],
-        "xavfsizlik_kuzatuv_tizimlari": [
-            ("1) Videokuzatuv kameralarini o'rnatish (IP va analog)", "srv_cctv_cameras"),
-            ("2) Kamera arxiv tizimlari va bulutli saqlash xizmatlari", "srv_camera_storage"),
-            ("3) Domofon tizimlarini o'rnatish", "srv_intercom"),
-            ("4) Xavfsizlik signalizatsiyasi va harakat sensorlarini o'rnatish", "srv_security_alarm"),
-            ("5) Yong'in signalizatsiyasi tizimlari", "srv_fire_alarm"),
-            ("6) Gaz sizish va suv toshqinga qarshi tizimlar", "srv_gas_flood_protection"),
-            ("7) Yuzni tanish (Face Recognition) tizimlari", "srv_face_recognition"),
-            ("8) Avtomobil nomerini aniqlash tizimlari", "srv_automatic_gates")
-        ],
-        "internet_tarmoq_xizmatlari": [
-            ("1) Wi-Fi tarmoqlarini o'rnatish va sozlash", "srv_wifi_setup"),
-            ("2) Wi-Fi qamrov zonasini kengaytirish (Access Point)", "srv_wifi_extender"),
-            ("3) Mobil aloqa signalini kuchaytirish (Repeater)", "srv_signal_booster"),
-            ("4) Ofis va uy uchun lokal tarmoq (LAN) qurish", "srv_lan_setup"),
-            ("5) Internet provayder xizmatlarini ulash", "srv_internet_provider"),
-            ("6) Server va NAS qurilmalarini o'rnatish", "srv_server_nas"),
-            ("7) Bulutli fayl almashinish va zaxira tizimlari", "srv_cloud_storage"),
-            ("8) VPN va xavfsiz internet ulanishlarini tashkil qilish", "srv_vpn_setup")
-        ],
-        "energiya_yashil_texnologiyalar": [
-            ("1) Quyosh panellarini o'rnatish va ulash", "srv_solar_panels"),
-            ("2) Quyosh batareyalari orqali energiya saqlash tizimlari", "srv_solar_batteries"),
-            ("3) Shamol generatorlarini o'rnatish", "srv_wind_generators"),
-            ("4) Elektr energiyasini tejovchi yoritish tizimlari", "srv_energy_saving_lighting"),
-            ("5) Avtomatik sug'orish tizimlari (Smart Irrigation)", "srv_smart_irrigation")
-        ],
-        "multimediya_aloqa_tizimlari": [
-            ("1) Smart TV o'rnatish va ulash", "srv_smart_tv"),
-            ("2) Uy kinoteatri tizimlari o'rnatish", "srv_home_cinema"),
-            ("3) Audio tizimlar (multiroom)", "srv_multiroom_audio"),
-            ("4) IP Telefoniya va mini ATS tizimlarini tashkil qilish", "srv_ip_telephony"),
-            ("5) Video konferensiya tizimlari", "srv_video_conference"),
-            ("6) Interaktiv taqdimot tizimlari (proyektor, LED ekran)", "srv_presentation_systems")
-        ],
-        "maxsus_qoshimcha_xizmatlar": [
-            ("1) Aqlli ofis tizimlarini o'rnatish", "srv_smart_office"),
-            ("2) Data markaz (Server room) loyihalash va montaj qilish", "srv_data_center"),
-            ("3) Qurilma va tizimlar uchun texnik xizmat ko'rsatish", "srv_technical_support"),
-            ("4) Dasturiy ta'minotni o'rnatish va yangilash", "srv_software_install"),
-            ("5) IoT (Internet of Things) qurilmalarini integratsiya qilish", "srv_iot_integration"),
-            ("6) Qurilmalarni masofadan boshqarish tizimlarini sozlash", "srv_remote_management"),
-            ("7) Sun'iy intellekt asosidagi uy va ofis boshqaruv tizimlari", "srv_ai_management")
-        ]
-    }
-    
-    keyboard = []
-    for text, callback_data in service_types.get(category, []):
-        keyboard.append([InlineKeyboardButton(text=text, callback_data=callback_data)])
-    
-    # Orqaga tugmasi
-    keyboard.append([InlineKeyboardButton(text="◀️ Orqaga", callback_data="back_to_categories")])
-    
-    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+# ====== LABEL LUG‘ATLAR ======
+CATEGORY_LABELS = {
+    "cat_smart_home": {"uz": "🏠 Aqlli uy va avtomatlashtirilgan xizmatlar", "ru": "🏠 Умный дом и автоматизация"},
+    "cat_security":   {"uz": "🔒 Xavfsizlik va kuzatuv tizimlari",          "ru": "🔒 Безопасность и видеонаблюдение"},
+    "cat_internet":   {"uz": "🌐 Internet va tarmoq xizmatlari",             "ru": "🌐 Интернет и сети"},
+    "cat_energy":     {"uz": "⚡ Energiya va yashil texnologiyalar",         "ru": "⚡ Энергия и зелёные технологии"},
+    "cat_multimedia": {"uz": "📺 Multimediya va aloqa tizimlari",            "ru": "📺 Мультимедиа и коммуникации"},
+    "cat_special":    {"uz": "🔧 Maxsus va qo'shimcha xizmatlar",            "ru": "🔧 Специальные и доп. услуги"},
+}
+
+SERVICE_LABELS = {
+    "srv_smart_home_setup": {"uz": "Aqlli uy tizimlarini o'rnatish va sozlash", "ru": "Установка и настройка системы умного дома"},
+    "srv_smart_lighting": {"uz": "Aqlli yoritish (Smart Lighting) tizimlari", "ru": "Умное освещение (Smart Lighting)"},
+    "srv_smart_thermostat": {"uz": "Aqlli termostat va iqlim nazarati", "ru": "Умный термостат и климат-контроль"},
+    "srv_smart_lock": {"uz": "Smart Lock — internet orqali boshqariladigan qulflar", "ru": "Smart Lock — умный замок (через интернет)"},
+    "srv_smart_outlets": {"uz": "Aqlli rozetalar va energiya monitoringi", "ru": "Умные розетки и мониторинг энергии"},
+    "srv_remote_control": {"uz": "Uyni masofadan boshqarish qurilmalari", "ru": "Дистанционное управление домом"},
+    "srv_smart_curtains": {"uz": "Aqlli pardalar va jaluzlar", "ru": "Умные шторы и жалюзи"},
+    "srv_appliance_integration": {"uz": "Aqlli maishiy texnika integratsiyasi", "ru": "Интеграция умной бытовой техники"},
+
+    "srv_cctv_cameras": {"uz": "Videokuzatuv kameralarini o'rnatish (IP/analog)", "ru": "Установка видеонаблюдения (IP/аналог)"},
+    "srv_camera_storage": {"uz": "Kamera arxiv tizimlari, bulutli saqlash", "ru": "Архив и облачное хранение видео"},
+    "srv_intercom": {"uz": "Domofon tizimlari", "ru": "Домофонные системы"},
+    "srv_security_alarm": {"uz": "Xavfsizlik signalizatsiyasi va sensorlar", "ru": "Охранная сигнализация и датчики"},
+    "srv_fire_alarm": {"uz": "Yong'in signalizatsiyasi tizimlari", "ru": "Пожарная сигнализация"},
+    "srv_gas_flood_protection": {"uz": "Gaz sizishi/suv toshqiniga qarshi tizimlar", "ru": "Системы защиты от утечки газа/потопа"},
+    "srv_face_recognition": {"uz": "Yuzni tanish (Face Recognition) tizimlari", "ru": "Распознавание лиц (Face Recognition)"},
+    "srv_automatic_gates": {"uz": "Avtomatik eshik/darvoza boshqaruvi", "ru": "Автоматические двери/ворота"},
+
+    "srv_wifi_setup": {"uz": "Wi-Fi tarmoqlarini o'rnatish va sozlash", "ru": "Установка и настройка Wi-Fi"},
+    "srv_wifi_extender": {"uz": "Wi-Fi qamrovini kengaytirish (Access Point)", "ru": "Расширение покрытия Wi-Fi (Access Point)"},
+    "srv_signal_booster": {"uz": "Mobil aloqa signalini kuchaytirish (Repeater)", "ru": "Усиление мобильной связи (Repeater)"},
+    "srv_lan_setup": {"uz": "Ofis/uy uchun lokal tarmoq (LAN) qurish", "ru": "Построение локальной сети (LAN)"},
+    "srv_internet_provider": {"uz": "Internet provayder xizmatlarini ulash", "ru": "Подключение услуг интернет-провайдера"},
+    "srv_server_nas": {"uz": "Server va NAS qurilmalarini o'rnatish", "ru": "Установка серверов и NAS"},
+    "srv_cloud_storage": {"uz": "Bulutli fayl almashish va zaxira", "ru": "Обмен файлами и резервное копирование в облаке"},
+    "srv_vpn_setup": {"uz": "VPN va xavfsiz ulanishlar", "ru": "VPN и защищённые подключения"},
+
+    "srv_solar_panels": {"uz": "Quyosh panellarini o'rnatish va ulash", "ru": "Установка и подключение солнечных панелей"},
+    "srv_solar_batteries": {"uz": "Quyosh batareyalari bilan energiya saqlash", "ru": "Хранение энергии на солнечных батареях"},
+    "srv_wind_generators": {"uz": "Shamol generatorlarini o'rnatish", "ru": "Установка ветрогенераторов"},
+    "srv_energy_saving_lighting": {"uz": "Energiya tejamkor yoritish tizimlari", "ru": "Энергоэффективное освещение"},
+    "srv_smart_irrigation": {"uz": "Avtomatik sug'orish (Smart Irrigation)", "ru": "Автополив (Smart Irrigation)"},
+
+    "srv_smart_tv": {"uz": "Smart TV o'rnatish va ulash", "ru": "Установка и подключение Smart TV"},
+    "srv_home_cinema": {"uz": "Uy kinoteatri tizimlari", "ru": "Домашний кинотеатр"},
+    "srv_multiroom_audio": {"uz": "Audio tizimlar (multiroom)", "ru": "Аудиосистемы (multiroom)"},
+    "srv_ip_telephony": {"uz": "IP-telefoniya, mini-ATS", "ru": "IP-телефония, мини-АТС"},
+    "srv_video_conference": {"uz": "Video konferensiya tizimlari", "ru": "Системы видеоконференций"},
+    "srv_presentation_systems": {"uz": "Interaktiv taqdimot (proyektor/LED)", "ru": "Интерактивные презентации (проектор/LED)"},
+
+    "srv_smart_office": {"uz": "Aqlli ofis tizimlari", "ru": "Системы умного офиса"},
+    "srv_data_center": {"uz": "Data-markaz (Server room) loyihalash va montaj", "ru": "Дата-центр (Server room): проектирование и монтаж"},
+    "srv_technical_support": {"uz": "Qurilma/tizimlar uchun texnik xizmat", "ru": "Техобслуживание устройств/систем"},
+    "srv_software_install": {"uz": "Dasturiy ta'minotni o'rnatish/yangilash", "ru": "Установка/обновление ПО"},
+    "srv_iot_integration": {"uz": "IoT qurilmalarini integratsiya qilish", "ru": "Интеграция IoT-устройств"},
+    "srv_remote_management": {"uz": "Masofaviy boshqaruv tizimlari", "ru": "Системы удалённого управления"},
+    "srv_ai_management": {"uz": "Sun'iy intellekt asosidagi boshqaruv", "ru": "AI-управление домом/офисом"},
+}
+
+# Kategoriya -> xizmat kodlari ro'yxati
+CATEGORY_TO_SERVICES = {
+    "cat_smart_home": [
+        "srv_smart_home_setup", "srv_smart_lighting", "srv_smart_thermostat",
+        "srv_smart_lock", "srv_smart_outlets", "srv_remote_control",
+        "srv_smart_curtains", "srv_appliance_integration",
+    ],
+    "cat_security": [
+        "srv_cctv_cameras", "srv_camera_storage", "srv_intercom",
+        "srv_security_alarm", "srv_fire_alarm", "srv_gas_flood_protection",
+        "srv_face_recognition", "srv_automatic_gates",
+    ],
+    "cat_internet": [
+        "srv_wifi_setup", "srv_wifi_extender", "srv_signal_booster",
+        "srv_lan_setup", "srv_internet_provider", "srv_server_nas",
+        "srv_cloud_storage", "srv_vpn_setup",
+    ],
+    "cat_energy": [
+        "srv_solar_panels", "srv_solar_batteries", "srv_wind_generators",
+        "srv_energy_saving_lighting", "srv_smart_irrigation",
+    ],
+    "cat_multimedia": [
+        "srv_smart_tv", "srv_home_cinema", "srv_multiroom_audio",
+        "srv_ip_telephony", "srv_video_conference", "srv_presentation_systems",
+    ],
+    "cat_special": [
+        "srv_smart_office", "srv_data_center", "srv_technical_support",
+        "srv_software_install", "srv_iot_integration", "srv_remote_management",
+        "srv_ai_management",
+    ],
+}
+
+
+
+def get_smart_service_types_keyboard(category_key: str, lang: str = "uz") -> InlineKeyboardMarkup:
+    """category_key = 'cat_*' kodi bo'yicha xizmat turlarini chiqaradi."""
+    srv_codes = CATEGORY_TO_SERVICES.get(category_key, [])
+    rows = []
+    for srv in srv_codes:
+        label = SERVICE_LABELS.get(srv, {}).get(lang, SERVICE_LABELS.get(srv, {}).get("uz", srv))
+        rows.append([InlineKeyboardButton(text=label, callback_data=srv)])
+
+    back_text = "◀️ Назад" if lang == "ru" else "◀️ Orqaga"
+    rows.append([InlineKeyboardButton(text=back_text, callback_data="back_to_categories")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
 
 def get_smart_service_confirmation_keyboard(lang="uz"):
     """SmartService tasdiqlash klaviaturasi"""
