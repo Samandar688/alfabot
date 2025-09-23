@@ -110,39 +110,51 @@ def get_client_regions_keyboard(lang: str = 'uz') -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
-def get_ccs_export_types_keyboard():
-    """Call Center Supervisor export types keyboard"""
-    keyboard = InlineKeyboardBuilder()
-    
-    keyboard.row(
-        InlineKeyboardButton(text="📋 Buyurtmalar", callback_data="ccs_export_orders"),
-        InlineKeyboardButton(text="📊 Statistika", callback_data="ccs_export_statistics")
-    )
-    keyboard.row(
-        InlineKeyboardButton(text="👥 Operatorlar", callback_data="ccs_export_employees"),
-        InlineKeyboardButton(text="📈 Hisobotlar", callback_data="ccs_export_reports")
-    )
-    keyboard.row(
-        InlineKeyboardButton(text="❌ Yopish", callback_data="ccs_export_end")
-    )
-    
-    return keyboard.as_markup()
+def get_ccs_export_types_keyboard(lang: str = "uz") -> InlineKeyboardMarkup:
+    """Call Center Supervisor export types keyboard with language support"""
+    if lang == "uz":
+        keyboard = [
+            [
+                InlineKeyboardButton(text="📋 Operatorlar ochgan arizalar", callback_data="ccs_export_operator_orders"),
+                InlineKeyboardButton(text="👥 Call Center operatorlari", callback_data="ccs_export_operators"),
+            ],
+            [
+                InlineKeyboardButton(text="📊 Statistika", callback_data="ccs_export_statistics"),
+                InlineKeyboardButton(text="📈 Hisobotlar", callback_data="ccs_export_reports"),
+            ],
+            [InlineKeyboardButton(text="🚫 Yopish", callback_data="ccs_export_end")],
+        ]
+    else:
+        keyboard = [
+            [
+                InlineKeyboardButton(text="📋 Заявки операторов", callback_data="ccs_export_operator_orders"),
+                InlineKeyboardButton(text="👥 Операторы Call Center", callback_data="ccs_export_operators"),
+            ],
+            [
+                InlineKeyboardButton(text="📊 Статистика", callback_data="ccs_export_statistics"),
+                InlineKeyboardButton(text="📈 Отчеты", callback_data="ccs_export_reports"),
+            ],
+            [InlineKeyboardButton(text="🚫 Закрыть", callback_data="ccs_export_end")],
+        ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-def get_ccs_export_formats_keyboard():
-    """Call Center Supervisor export formats keyboard"""
-    keyboard = InlineKeyboardBuilder()
-    
-    keyboard.row(
-        InlineKeyboardButton(text="📄 CSV", callback_data="ccs_format_csv"),
-        InlineKeyboardButton(text="📊 Excel", callback_data="ccs_format_xlsx")
-    )
-    keyboard.row(
-        InlineKeyboardButton(text="📝 Word", callback_data="ccs_format_docx"),
-        InlineKeyboardButton(text="📋 PDF", callback_data="ccs_format_pdf")
-    )
-    keyboard.row(
-        InlineKeyboardButton(text="🔙 Orqaga", callback_data="ccs_export_back_types"),
-        InlineKeyboardButton(text="❌ Yopish", callback_data="ccs_export_end")
-    )
-    
-    return keyboard.as_markup()
+
+def get_ccs_export_formats_keyboard(lang: str = "uz") -> InlineKeyboardMarkup:
+    """Call Center Supervisor export formats keyboard with language support"""
+    if lang == "uz":
+        keyboard = [
+            [InlineKeyboardButton(text="CSV", callback_data="ccs_format_csv")],
+            [InlineKeyboardButton(text="Excel", callback_data="ccs_format_xlsx")],
+            [InlineKeyboardButton(text="Word", callback_data="ccs_format_docx")],
+            [InlineKeyboardButton(text="PDF", callback_data="ccs_format_pdf")],
+            [InlineKeyboardButton(text="◀️ Orqaga", callback_data="ccs_export_back_types")],
+        ]
+    else:
+        keyboard = [
+            [InlineKeyboardButton(text="CSV", callback_data="ccs_format_csv")],
+            [InlineKeyboardButton(text="Excel", callback_data="ccs_format_xlsx")],
+            [InlineKeyboardButton(text="Word", callback_data="ccs_format_docx")],
+            [InlineKeyboardButton(text="PDF", callback_data="ccs_format_pdf")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="ccs_export_back_types")],
+        ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)

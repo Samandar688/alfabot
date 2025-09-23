@@ -16,7 +16,7 @@ DB_CONFIG = {
     'port': 5432,
     'user': 'postgres',
     'password': 'ulugbek202', 
-    'database': 'alfa_db_uz_14',
+    'database': 'alfa_db_uz_100',
     'client_encoding': 'UTF8'
 }
 

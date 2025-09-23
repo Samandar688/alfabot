@@ -9,7 +9,7 @@ import asyncio
 logger = logging.getLogger(__name__)
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill
-from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib.pagesizes import letter, A4, landscape
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
@@ -220,20 +220,33 @@ class ExportUtils:
         import os
         
         output = io.BytesIO()
-        doc = SimpleDocTemplate(output, pagesize=A4)
+        # Use landscape to give more horizontal space for many columns
+        doc = SimpleDocTemplate(output, pagesize=landscape(A4))
         
-        # Register DejaVu Sans font for better Unicode support (fallback to default if not available)
+        # Register a Unicode-capable TTF font for Cyrillic/Unicode text where possible
         try:
-            # Try to register DejaVu Sans font for better Unicode support
-            font_path = os.path.join(os.path.dirname(__file__), 'fonts', 'DejaVuSans.ttf')
-            if not os.path.exists(font_path):
-                # Use system fonts or default
-                font_name = 'Helvetica'
-            else:
-                pdfmetrics.registerFont(TTFont('DejaVuSans', font_path))
-                font_name = 'DejaVuSans'
+            candidates = []
+            # Project-local font (recommended to ship this file)
+            candidates.append(os.path.join(os.path.dirname(__file__), 'fonts', 'DejaVuSans.ttf'))
+            # Common Windows fonts
+            candidates += [
+                r"C:\\Windows\\Fonts\\DejaVuSans.ttf",
+                r"C:\\Windows\\Fonts\\NotoSans-Regular.ttf",
+                r"C:\\Windows\\Fonts\\arial.ttf",
+            ]
+            # Common Linux fonts
+            candidates += [
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+                "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+            ]
+            font_name = 'Helvetica'
+            for p in candidates:
+                if os.path.exists(p):
+                    pdfmetrics.registerFont(TTFont('AppUnicode', p))
+                    font_name = 'AppUnicode'
+                    break
         except:
-            # Fallback to default font
             font_name = 'Helvetica'
         
         # Styles for better Unicode support
@@ -250,7 +263,18 @@ class ExportUtils:
         normal_style = ParagraphStyle(
             'CustomNormal',
             parent=styles['Normal'],
-            fontName=font_name
+            fontName=font_name,
+            fontSize=9,
+            leading=11,
+            wordWrap='CJK'
+        )
+        header_style = ParagraphStyle(
+            'CustomHeader',
+            parent=styles['Normal'],
+            fontName=font_name,
+            fontSize=10,
+            leading=12,
+            wordWrap='CJK'
         )
         
         story = []
@@ -263,27 +287,40 @@ class ExportUtils:
         if data:
             # Prepare table data with proper encoding
             headers = [ExportUtils._normalize_string(h) for h in list(data[0].keys())]
-            table_data = [headers]
+            table_data = [[Paragraph(str(h), header_style) for h in headers]]
             
             for row in data:
                 row_values = []
                 for value in row.values():
                     normalized = ExportUtils._normalize_string(value)
-                    row_values.append(normalized if normalized is not None else "")
+                    row_values.append(Paragraph(normalized if normalized is not None else "", normal_style))
                 table_data.append(row_values)
             
+            # Fit columns to available width
+            available_width = doc.width
+            num_cols = max(1, len(headers))
+            # Minimum reasonable width per column
+            min_w = 50
+            base_w = max(min_w, available_width / num_cols)
+            col_widths = [base_w] * num_cols
+
             # Create table
-            table = Table(table_data)
+            table = Table(table_data, colWidths=col_widths, repeatRows=1)
             table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                 ('FONTNAME', (0, 0), (-1, -1), font_name),
-                ('FONTSIZE', (0, 0), (-1, 0), 12),
-                ('FONTSIZE', (0, 1), (-1, -1), 10),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('FONTSIZE', (0, 1), (-1, -1), 9),
                 ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
                 ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('LEFTPADDING', (0, 0), (-1, -1), 3),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+                ('TOPPADDING', (0, 0), (-1, -1), 3),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ]))
             
             story.append(table)
@@ -340,7 +377,8 @@ class ExportUtils:
         try:
             if format_type == "csv":
                 csv_output = self.to_csv(orders_data)
-                return csv_output.getvalue().encode('utf-8')
+                # Use BOM so Excel opens UTF-8 correctly
+                return csv_output.getvalue().encode('utf-8-sig')
             elif format_type == "xlsx":
                 excel_output = self.generate_excel(orders_data, "Orders", title)
                 return excel_output.getvalue()
@@ -417,7 +455,8 @@ class ExportUtils:
             # Generate export using the same methods as orders
             if format_type == "csv":
                 csv_output = self.to_csv(stats_list)
-                return csv_output.getvalue().encode('utf-8')
+                # Use BOM so Excel opens UTF-8 correctly
+                return csv_output.getvalue().encode('utf-8-sig')
             elif format_type == "xlsx":
                 excel_output = self.generate_excel(stats_list, "Statistics", title)
                 return excel_output.getvalue()

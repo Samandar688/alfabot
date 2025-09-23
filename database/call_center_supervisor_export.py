@@ -303,3 +303,122 @@ async def get_ccs_reports_for_export() -> List[Dict[str, Any]]:
         
     finally:
         await conn.close()
+
+
+async def get_ccs_operator_orders_for_export() -> List[Dict[str, Any]]:
+    """Fetch orders/applications opened by call center operators for export"""
+    conn = await asyncpg.connect(settings.DB_URL)
+    try:
+        # Get orders that were created/handled by call center operators
+        query = """
+        SELECT 
+            co.id,
+            co.user_id,
+            co.region,
+            co.address,
+            co.longitude,
+            co.latitude,
+            co.created_at as connection_date,
+            co.updated_at,
+            co.status,
+            co.rating,
+            co.notes as comments,
+            co.jm_notes as call_center_comments,
+            u.full_name as client_name,
+            u.phone as client_phone,
+            t.name as tariff_name,
+            op.full_name as operator_name,
+            op.phone as operator_phone
+        FROM connection_orders co
+        LEFT JOIN users u ON co.user_id = u.id
+        LEFT JOIN tarif t ON co.tarif_id = t.id
+        LEFT JOIN users op ON co.assigned_operator_id = op.id
+        WHERE op.role = 'callcenter_operator' OR co.id IN (
+            SELECT DISTINCT order_id FROM order_history 
+            WHERE created_by_role = 'callcenter_operator'
+        )
+        ORDER BY co.created_at DESC
+        """
+        
+        rows = await conn.fetch(query)
+        
+        result = []
+        for row in rows:
+            result.append({
+                'ID': row['id'],
+                'Ariza raqami': str(row['id']),
+                'Mijoz ismi': row['client_name'] or '',
+                'Mijoz telefoni': row['client_phone'] or '',
+                'Mijoz abonent ID': str(row['user_id']) if row['user_id'] else '',
+                'Hudud': row['region'] or '',
+                'Manzil': row['address'] or '',
+                'Tarif': row['tariff_name'] or '',
+                'Yaratilgan sana': row['connection_date'].strftime('%Y-%m-%d %H:%M:%S') if row['connection_date'] else '',
+                'Yangilangan sana': row['updated_at'].strftime('%Y-%m-%d %H:%M:%S') if row['updated_at'] else '',
+                'Holati': row['status'] or '',
+                'Reyting': str(row['rating']) if row['rating'] else '',
+                'Mijoz izohi': row['comments'] or '',
+                'Call Center izohi': row['call_center_comments'] or '',
+                'Operator ismi': row['operator_name'] or 'Tayinlanmagan',
+                'Operator telefoni': row['operator_phone'] or ''
+            })
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error getting operator orders for export: {e}")
+        return []
+    finally:
+        await conn.close()
+
+async def get_ccs_operators_for_export() -> List[Dict[str, Any]]:
+    """Get call center operators data for export"""
+    conn = await asyncpg.connect(settings.DB_URL)
+    try:
+        # Get call center operators with their performance metrics
+        query = """
+        SELECT 
+            u.id,
+            u.full_name,
+            u.phone,
+            u.telegram_id,
+            u.role,
+            u.is_blocked,
+            u.created_at,
+            COUNT(co.id) as total_orders,
+            COUNT(CASE WHEN co.status = 'completed' THEN 1 END) as completed_orders,
+            COUNT(CASE WHEN co.status = 'in_progress' THEN 1 END) as in_progress_orders,
+            AVG(co.rating) as avg_rating,
+            MAX(co.updated_at) as last_activity
+        FROM users u
+        LEFT JOIN connection_orders co ON u.id = co.assigned_operator_id
+        WHERE u.role = 'callcenter_operator'
+        GROUP BY u.id, u.full_name, u.phone, u.telegram_id, u.role, u.is_blocked, u.created_at
+        ORDER BY u.full_name
+        """
+        
+        rows = await conn.fetch(query)
+        
+        result = []
+        for row in rows:
+            result.append({
+                'ID': row['id'],
+                'Operator ismi': row['full_name'] or '',
+                'Telefon': row['phone'] or '',
+                'Telegram ID': str(row['telegram_id']) if row['telegram_id'] else '',
+                'Jami arizalar': row['total_orders'] or 0,
+                'Bajarilgan arizalar': row['completed_orders'] or 0,
+                'Jarayondagi arizalar': row['in_progress_orders'] or 0,
+                'O\'rtacha reyting': f"{row['avg_rating']:.2f}" if row['avg_rating'] else '0.00',
+                'Holati': 'Nofaol' if row['is_blocked'] else 'Faol',
+                'So\'nggi faollik': row['last_activity'].strftime('%Y-%m-%d %H:%M:%S') if row['last_activity'] else 'Hech qachon',
+                'Qo\'shilgan sana': row['created_at'].strftime('%Y-%m-%d %H:%M:%S') if row['created_at'] else ''
+            })
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error getting operators for export: {e}")
+        return []
+    finally:
+        await conn.close()
