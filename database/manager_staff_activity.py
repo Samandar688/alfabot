@@ -1,40 +1,50 @@
-# database/staff_activity_queries.py
+# database/manager_staff_activity_queries.py
+# Xodimlar (manager/junior_manager) kesimida nechta connection / technician ariza
+# ochganini bitta so'rovda chiqarib beradi.
+
+from typing import List, Dict, Any
 import asyncpg
 from config import settings
 
-async def get_active_connection_tasks_count() -> int:
+
+async def fetch_staff_activity() -> List[Dict[str, Any]]:
     """
-    Aktiv vazifalar soni:
-      connection_orders jadvalidan is_active = TRUE
-      va status 'completed' EMAS (ENUM: connection_order_status)
+    UZ: users jadvalidan role IN ('manager','junior_manager') bo'lgan xodimlarni oladi
+        va saff_ordersdagi arizalarini hisoblaydi: connection/technician/total/active.
+    RU: Берет сотрудников с ролями ('manager','junior_manager') и считает заявки.
+
+    Qaytadi: [
+      {
+        "user_id": 63,
+        "full_name": "Ism Familya",
+        "role": "manager" | "junior_manager",
+        "conn_count": 7,
+        "tech_count": 4,
+        "total_count": 11,
+        "active_count": 5
+      }, ...
+    ]
+    """
+    sql = """
+    SELECT
+        u.id                           AS user_id,
+        COALESCE(NULLIF(u.full_name, ''), '—') AS full_name,
+        u.role,
+        COALESCE(SUM(CASE WHEN s.type_of_zayavka = 'connection' THEN 1 ELSE 0 END), 0) AS conn_count,
+        COALESCE(SUM(CASE WHEN s.type_of_zayavka = 'technician' THEN 1 ELSE 0 END), 0) AS tech_count,
+        COALESCE(COUNT(s.id), 0)                                                    AS total_count,
+        COALESCE(SUM(CASE WHEN s.is_active = TRUE AND (s.status)::text <> 'completed' THEN 1 ELSE 0 END), 0)
+            AS active_count
+    FROM users u
+    LEFT JOIN saff_orders s
+           ON s.user_id = u.id
+    WHERE u.role IN ('manager','junior_manager')
+    GROUP BY u.id, u.full_name, u.role
+    ORDER BY total_count DESC, conn_count DESC, tech_count DESC, u.full_name ASC;
     """
     conn = await asyncpg.connect(settings.DB_URL)
     try:
-        return await conn.fetchval(
-            """
-            SELECT COUNT(*)
-              FROM connection_orders
-             WHERE is_active = TRUE
-               AND status <> 'completed'::connection_order_status
-            """
-        )
-    finally:
-        await conn.close()
-
-
-async def get_junior_manager_count() -> int:
-    """
-    Umumiy xodimlar soni:
-      users jadvalidan role = 'junior_manager'
-    """
-    conn = await asyncpg.connect(settings.DB_URL)
-    try:
-        return await conn.fetchval(
-            """
-            SELECT COUNT(*)
-              FROM users
-             WHERE role = 'junior_manager'
-            """
-        )
+        rows = await conn.fetch(sql)
+        return [dict(r) for r in rows]
     finally:
         await conn.close()
