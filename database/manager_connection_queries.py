@@ -1,69 +1,34 @@
+# database/call_center_supervisor_queries.py
+
 import asyncpg
-from config import settings  # settings.DB_URL
 import re
 from typing import List, Dict, Any, Optional
-import os
+from config import settings
 
-# Faqat supervisor inbox sharti bo'yicha nechta aktiv ariza borligini olamiz
-async def ccs_count_active() -> int:
-    conn = await asyncpg.connect(settings.DB_URL)
-    try:
-        row = await conn.fetchrow("""
-            SELECT COUNT(*) AS c
-            FROM saff_orders
-            WHERE status = 'manager'
-              AND is_active = TRUE
-        """)
-        return int(row["c"])
-    finally:
-        await conn.close()
+# =========================================================
+#  Konfiguratsiya / konstantalar
+# =========================================================
 
-# OFFSET bo'yicha bitta arizani olib kelamiz (karta ko'rinishida ko'rsatamiz)
-async def ccs_fetch_by_offset(offset: int) -> Optional[Dict[str, Any]]:
-    conn = await asyncpg.connect(settings.DB_URL)
-    try:
-        row = await conn.fetchrow("""
-            SELECT id, user_id, phone, abonent_id, region, address, tarif_id,
-                   description, created_at
-            FROM saff_orders
-            WHERE status = 'manager'
-              AND is_active = TRUE
-            ORDER BY created_at ASC
-            OFFSET $1 LIMIT 1
-        """, offset)
-        return dict(row) if row else None
-    finally:
-        await conn.close()
+# ENUM connection_order_status tarkibida 'manager' yo‘q,
+# shu sabab "supervisor inbox" sifatida 'in_controller'dan foydalanamiz.
+STATUS_SUPERVISOR_INBOX = "in_controller"
+STATUS_IN_CONTROLLER    = "in_controller"
 
-# Controlga jo'natish: status -> in_control
-async def ccs_send_to_control(order_id: int, supervisor_id: Optional[int] = None) -> None:
-    conn = await asyncpg.connect(settings.DB_URL)
-    try:
-        await conn.execute("""
-            UPDATE saff_orders
-               SET status = 'in_controller',
-                   updated_at = NOW()
-             WHERE id = $1
-        """, order_id)
-        # TODO (ixtiyoriy): audit_log ga yozish, supervisor_id ni ham log qilish
-    finally:
-        await conn.close()
+# Yangi arizalar ham darhol controller/inboxda ko‘rinishi uchun:
+DEFAULT_STATUS_ON_CREATE = STATUS_SUPERVISOR_INBOX  # 'in_controller'
 
-# Bekor qilish: is_active -> false
-async def ccs_cancel(order_id: int) -> None:
-    conn = await asyncpg.connect(settings.DB_URL)
-    try:
-        await conn.execute("""
-            UPDATE saff_orders
-               SET is_active = FALSE,
-                   updated_at = NOW()
-             WHERE id = $1
-        """, order_id)
-    finally:
-        await conn.close()
+# Telefon normalizatsiyasi (rag‘batlantirilgan format: +99890xxxxxxx)
+_PHONE_RE = re.compile(
+    r"^\+?998\s?\d{2}\s?\d{3}\s?\d{2}\s?\d{2}$|^\+?998\d{9}$|^\d{9,12}$"
+)
 
+async def _conn() -> asyncpg.Connection:
+    """Bitta asyncpg connection qaytaradi."""
+    return await asyncpg.connect(settings.DB_URL)
 
-_PHONE_RE = re.compile(r"^\+?998\s?\d{2}\s?\d{3}\s?\d{2}\s?\d{2}$|^\+?998\d{9}$|^\d{9,12}$")
+# =========================================================
+#  Telefon util
+# =========================================================
 
 def _normalize_phone(raw: str) -> Optional[str]:
     raw = (raw or "").strip()
@@ -76,26 +41,138 @@ def _normalize_phone(raw: str) -> Optional[str]:
         return "+998" + digits
     return raw if raw.startswith("+") else ("+" + digits if digits else None)
 
+# =========================================================
+#  Supervisor Inbox (saff_orders)
+# =========================================================
+
+async def ccs_count_active(status: str = STATUS_SUPERVISOR_INBOX) -> int:
+    """
+    UZ: Supervisor inbox uchun aktiv arizalar soni (saff_orders).
+    RU: Кол-во активных заявок в inbox (saff_orders) для статуса.
+    """
+    conn = await _conn()
+    try:
+        return await conn.fetchval(
+            """
+            SELECT COUNT(*)
+              FROM saff_orders
+             WHERE status = $1
+               AND is_active = TRUE
+            """,
+            status,
+        )
+    finally:
+        await conn.close()
+
+async def ccs_fetch_by_offset(offset: int, status: str = STATUS_SUPERVISOR_INBOX) -> Optional[Dict[str, Any]]:
+    """
+    UZ: Supervisor inbox'dan OFFSET bo‘yicha bitta arizani olib keladi.
+    RU: Возвращает одну заявку по OFFSET для заданного статуса.
+    """
+    conn = await _conn()
+    try:
+        row = await conn.fetchrow(
+            """
+            SELECT id, user_id, phone, abonent_id, region, address, tarif_id,
+                   description, status, type_of_zayavka, is_active,
+                   created_at, updated_at
+              FROM saff_orders
+             WHERE status = $1
+               AND is_active = TRUE
+             ORDER BY created_at ASC, id ASC
+             OFFSET $2 LIMIT 1
+            """,
+            status, offset,
+        )
+        return dict(row) if row else None
+    finally:
+        await conn.close()
+
+async def ccs_send_to_control(order_id: int, supervisor_id: Optional[int] = None) -> bool:
+    """
+    UZ: Controllga jo‘natish: status -> 'in_controller'.
+        Idempotent: status allaqachon 'in_controller' bo‘lsa ham True qaytaradi.
+    RU: Перевод в контроль (idempotent): если уже 'in_controller', вернёт True.
+    """
+    conn = await _conn()
+    try:
+        async with conn.transaction():
+            # Avval o'zgartirishga urinib ko'ramiz (agar boshqa status bo'lsa)
+            updated = await conn.execute(
+                """
+                UPDATE saff_orders
+                   SET status    = $2::connection_order_status,
+                       updated_at = NOW()
+                 WHERE id = $1
+                   AND status <> $2::connection_order_status
+                """,
+                order_id, STATUS_IN_CONTROLLER,
+            )
+            if updated.startswith("UPDATE 1"):
+                return True
+
+            # O'zgarmagan bo'lsa: mavjudligini va statusni tekshiramiz
+            exists = await conn.fetchval(
+                "SELECT 1 FROM saff_orders WHERE id = $1 AND status = $2::connection_order_status",
+                order_id, STATUS_IN_CONTROLLER
+            )
+            return bool(exists)
+    finally:
+        await conn.close()
+
+async def ccs_cancel(order_id: int) -> bool:
+    """
+    UZ: Bekor qilish: is_active -> FALSE
+    RU: Отмена: is_active -> FALSE
+    """
+    conn = await _conn()
+    try:
+        async with conn.transaction():
+            updated = await conn.execute(
+                """
+                UPDATE saff_orders
+                   SET is_active = FALSE,
+                       updated_at = NOW()
+                 WHERE id = $1
+                """,
+                order_id,
+            )
+            return updated.startswith("UPDATE 1")
+    finally:
+        await conn.close()
+
+# =========================================================
+#  Foydalanuvchini telefon bo‘yicha topish
+# =========================================================
+
 async def find_user_by_phone(phone: str) -> Optional[Dict[str, Any]]:
+    """
+    UZ: Telefon bo‘yicha users dagi yozuvni qidiradi (raqamlar bo‘yicha taqqoslash).
+    RU: Поиск пользователя по телефону (сравнение по цифрам).
+    """
     phone_n = _normalize_phone(phone)
     if not phone_n:
         return None
-    conn = await asyncpg.connect(settings.DB_URL)
+    conn = await _conn()
     try:
         row = await conn.fetchrow(
             """
             SELECT id, telegram_id, full_name, username, phone, language, region, address,
                    abonent_id, is_blocked
-            FROM users
-            WHERE regexp_replace(phone, '[^0-9]', '', 'g')
-                  = regexp_replace($1,   '[^0-9]', '', 'g')
-            LIMIT 1
+              FROM users
+             WHERE regexp_replace(phone, '[^0-9]', '', 'g')
+                   = regexp_replace($1,   '[^0-9]', '', 'g')
+             LIMIT 1
             """,
             phone_n,
         )
         return dict(row) if row else None
     finally:
         await conn.close()
+
+# =========================================================
+#  Tarif: kod -> nom, va get_or_create
+# =========================================================
 
 def _code_to_name(tariff_code: Optional[str]) -> Optional[str]:
     if not tariff_code:
@@ -110,31 +187,38 @@ def _code_to_name(tariff_code: Optional[str]) -> Optional[str]:
 
 async def get_or_create_tarif_by_code(tariff_code: Optional[str]) -> Optional[int]:
     """
-    PATCH: jadvalda 'code' yo‘q. Shu sabab 'name' bo‘yicha ishlaymiz.
+    UZ: Jadvalda 'code' yo‘q. Shuning uchun 'name' bo‘yicha izlaymiz/yaratamiz.
+    RU: В таблице нет поля 'code' — ищем/создаём по 'name'.
     """
     if not tariff_code:
         return None
 
     name = _code_to_name(tariff_code)
     if not name:
-        # Agar mappingda bo‘lmasa, kodni sarlavhaga aylantiramiz
-        # tariff_xammasi_birga_3_plus -> "Xammasi Birga 3 Plus"
-        base = re.sub(r"^tariff_", "", tariff_code)
+        # fallback: kodni sarlavhaga aylantiramiz
+        base = re.sub(r"^tariff_", "", tariff_code)  # tariff_xxx -> xxx
         name = re.sub(r"_+", " ", base).title()
 
-    conn = await asyncpg.connect(settings.DB_URL)
+    conn = await _conn()
     try:
-        row = await conn.fetchrow("SELECT id FROM public.tarif WHERE name = $1 LIMIT 1", name)
-        if row:
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                "SELECT id FROM public.tarif WHERE name = $1 LIMIT 1",
+                name,
+            )
+            if row:
+                return row["id"]
+            row = await conn.fetchrow(
+                "INSERT INTO public.tarif (name) VALUES ($1) RETURNING id",
+                name,
+            )
             return row["id"]
-
-        row = await conn.fetchrow(
-            "INSERT INTO public.tarif (name) VALUES ($1) RETURNING id",
-            name
-        )
-        return row["id"]
     finally:
         await conn.close()
+
+# =========================================================
+#  Yaratish (connection / technician)
+# =========================================================
 
 async def saff_orders_create(
     user_id: int,
@@ -142,54 +226,32 @@ async def saff_orders_create(
     abonent_id: Optional[str],
     region: int,
     address: str,
-    tarif_id: Optional[int]
+    tarif_id: Optional[int],
 ) -> int:
-    conn = await asyncpg.connect(settings.DB_URL)
+    """
+    UZ: Call-center operatori TOMONIDAN ulanish arizasini yaratish.
+        Default status: 'in_controller' (supervisor/controller inbox).
+    RU: Создание заявки на подключение (оператором).
+        Статус по умолчанию: 'in_controller'.
+    """
+    conn = await _conn()
     try:
-        row = await conn.fetchrow(
-            """
-            INSERT INTO saff_orders (
-                user_id, phone, abonent_id, region, address, tarif_id,
-                description, type_of_zayavka, status, is_active
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                """
+                INSERT INTO saff_orders (
+                    user_id, phone, abonent_id, region, address, tarif_id,
+                    description, type_of_zayavka, status, is_active, created_at, updated_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6,
+                        '', 'connection', $7::connection_order_status, TRUE, NOW(), NOW())
+                RETURNING id
+                """,
+                user_id, phone, abonent_id, region, address, tarif_id, DEFAULT_STATUS_ON_CREATE
             )
-            VALUES ($1, $2, $3, $4, $5, $6, '', 'connection', 'in_controller', TRUE)
-            RETURNING id
-            """,
-            user_id, phone, abonent_id, region, address, tarif_id
-        )
-        return row["id"]
+            return row["id"]
     finally:
         await conn.close()
-
-
-# database/call_technician_queries.py
-
-
-# --- Minimal connection helper (no pool) ---
-# Uses DATABASE_URL if set, else falls back to local default.
-_DSN = os.getenv(
-    "DATABASE_URL",
-    # CHANGE THIS IF NEEDED:
-    "postgresql://postgres:postgres@localhost:5432/alfa_db"
-)
-
-async def _conn() -> asyncpg.Connection:
-    """
-    Open a single asyncpg connection. Caller is responsible for closing it.
-    We keep this minimal to avoid importing unknown project-specific helpers.
-    """
-    return await asyncpg.connect(_DSN)
-
-# --- Public API ---
-
-
-async def _conn() -> asyncpg.Connection:
-    # Endi fallback DSN YO'Q. Faqat settings.DB_URL ishlatiladi.
-    return await asyncpg.connect(settings.DB_URL)
-
-
-
-  # adjust import if needed
 
 async def saff_orders_technician_create(
     user_id: int,
@@ -199,26 +261,33 @@ async def saff_orders_technician_create(
     address: str,
     description: Optional[str],
 ) -> int:
-    conn = await asyncpg.connect(settings.DB_URL)
+    """
+    UZ: Call-center operatori TOMONIDAN texnik xizmat arizasini yaratish.
+        Default status: 'in_controller' (supervisor/controller inbox).
+    RU: Создание заявки на техобслуживание (оператором).
+        Статус по умолчанию: 'in_controller'.
+    """
+    conn = await _conn()
     try:
-        row = await conn.fetchrow(
-            """
-            INSERT INTO saff_orders (
-                user_id, phone, region, abonent_id,
-                address, description, status, type_of_zayavka, is_active
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                """
+                INSERT INTO saff_orders (
+                    user_id, phone, region, abonent_id, address, description,
+                    status, type_of_zayavka, is_active, created_at, updated_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6,
+                        $7::connection_order_status, 'technician', TRUE, NOW(), NOW())
+                RETURNING id
+                """,
+                user_id,
+                phone,
+                region,
+                abonent_id,
+                address,
+                (description or ""),
+                DEFAULT_STATUS_ON_CREATE,   # 'in_controller'
             )
-            VALUES ($1, $2, $3, $4,
-                    $5, $6, 'in_controller', 'technician', TRUE)
-            RETURNING id
-            """,
-            user_id,
-            phone,
-            # note: region first, then abonent_id (order doesn't matter as long as names match)
-            region,
-            abonent_id,
-            address,
-            (description or ""),
-        )
-        return row["id"]
+            return row["id"]
     finally:
         await conn.close()

@@ -1,3 +1,4 @@
+# database/jm_inbox_queries.py
 import asyncpg
 from typing import Any, Dict, List, Optional
 from config import settings
@@ -91,6 +92,7 @@ async def db_get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
 
 # JM Inbox: faqat 'in_junior_manager' dagi arizalar
 # connections(recipient_id = JM id) JOIN connection_orders(id = connecion_id) LEFT JOIN users(order.user_id)
+# ... db_get_jm_inbox_items() ichidagi SELECTni shu ko‘rinishga keltiring:
 async def db_get_jm_inbox_items(recipient_id: int, limit: int = 50) -> List[Dict[str, Any]]:
     conn = await asyncpg.connect(settings.DB_URL)
     try:
@@ -111,6 +113,7 @@ async def db_get_jm_inbox_items(recipient_id: int, limit: int = 50) -> List[Dict
                 co.address             AS order_address,
                 co.status              AS order_status,
                 co.user_id             AS order_user_id,
+                co.jm_notes            AS order_jm_notes,     -- 🆕 qo‘shildi
 
                 u.full_name            AS client_full_name,
                 u.phone                AS client_phone
@@ -127,6 +130,7 @@ async def db_get_jm_inbox_items(recipient_id: int, limit: int = 50) -> List[Dict
         return [dict(r) for r in rows]
     finally:
         await conn.close()
+
 
 # Order JM ga tegishli-yo'qligini tekshirish
 async def db_check_order_ownership(order_id: int, jm_id: int) -> bool:
@@ -222,5 +226,45 @@ async def db_jm_send_to_controller(order_id: int, jm_id: int, controller_id: Opt
             """, order_id, jm_id, controller_id, old_status, new_status)
 
             return True
+    finally:
+        await conn.close()
+
+
+async def db_set_jm_notes(order_id: int, jm_id: int, note_text: str) -> bool:
+    """
+    JM izohini saqlaydi:
+      - faqat shu ariza hozir 'in_junior_manager' bo‘lsa
+      - va aynan shu JM (recipient)ga biriktirilgan bo‘lsa (connections orqali)
+    """
+    conn = await asyncpg.connect(settings.DB_URL)
+    try:
+        async with conn.transaction():
+            # egalikni tekshiramiz
+            owns = await conn.fetchrow(
+                """
+                SELECT 1
+                  FROM connections
+                 WHERE connecion_id = $1
+                   AND recipient_id = $2
+                 LIMIT 1
+                """,
+                order_id, jm_id
+            )
+            if not owns:
+                return False
+
+            # statusni tekshirib, update qilamiz
+            row = await conn.fetchrow(
+                """
+                UPDATE connection_orders
+                   SET jm_notes  = $2,
+                       updated_at = NOW()
+                 WHERE id = $1
+                   AND status = 'in_junior_manager'::connection_order_status
+             RETURNING id
+                """,
+                order_id, note_text.strip()
+            )
+            return bool(row)
     finally:
         await conn.close()

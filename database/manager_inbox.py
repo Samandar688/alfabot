@@ -9,15 +9,28 @@ async def get_user_by_telegram_id(telegram_id: int) -> Optional[Dict[str, Any]]:
     try:
         row = await conn.fetchrow(
             """
-            SELECT id, telegram_id, full_name, username, phone, role
-              FROM users
-             WHERE telegram_id = $1
+            SELECT 
+                id,
+                telegram_id,
+                full_name,
+                username,
+                phone,
+                role,
+                language,   -- 🔑 tilni ham olish kerak
+                region,
+                address,
+                is_blocked,
+                created_at,
+                updated_at
+            FROM users
+            WHERE telegram_id = $1
             """,
             telegram_id,
         )
         return dict(row) if row else None
     finally:
         await conn.close()
+
 
 #  role bo'yicha userlarni olish
 async def get_users_by_role(role: str) -> List[Dict[str, Any]]:
@@ -166,5 +179,50 @@ async def count_manager_inbox() -> int:
                AND co.status IN ('new','in_manager')
             """
         )
+    finally:
+        await conn.close()
+
+#  junior_manager larni hozirgi yuklamasi (ochiq arizalar soni) bilan olish
+async def get_juniors_with_load_via_history() -> List[Dict[str, Any]]:
+    conn = await asyncpg.connect(settings.DB_URL)
+    try:
+        rows = await conn.fetch(
+            """
+            WITH last_assign AS (
+                SELECT DISTINCT ON (c.connecion_id)
+                       c.connecion_id,
+                       c.recipient_id,
+                       c.recipient_status,
+                       c.created_at
+                FROM connections c
+                ORDER BY c.connecion_id, c.created_at DESC
+            ),
+            workloads AS (
+                SELECT
+                    la.recipient_id AS jm_id,
+                    COUNT(*) AS cnt
+                FROM last_assign la
+                JOIN connection_orders co
+                  ON co.id = la.connecion_id
+                WHERE co.is_active = TRUE
+                  AND co.status = 'in_junior_manager'
+                  AND la.recipient_status = 'in_junior_manager'
+                GROUP BY la.recipient_id
+            )
+            SELECT 
+                u.id,
+                u.full_name,
+                u.username,
+                u.phone,
+                u.telegram_id,
+                COALESCE(w.cnt, 0) AS load_count
+            FROM users u
+            LEFT JOIN workloads w ON w.jm_id = u.id
+            WHERE u.role = 'junior_manager'
+              AND COALESCE(u.is_blocked, FALSE) = FALSE
+            ORDER BY u.full_name NULLS LAST, u.id
+            """
+        )
+        return [dict(r) for r in rows]
     finally:
         await conn.close()

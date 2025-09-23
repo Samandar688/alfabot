@@ -1,174 +1,129 @@
 # handlers/manager/staff_activity.py
-# Faqat INLINE tugmalar bilan ishlaydi. Reply keyboard yuborilmaydi.
-# Kartochka: "Xodimlar faoliyati" — statistikalar va bo‘limlar.
+# Reply tugmadan: "👥 Xodimlar faoliyati" / "👥 Активность сотрудников"
+# Hech qanday inline tugma yo'q — darhol matnli hisobot yuboradi (UZ/RU).
 
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 
 from filters.role_filter import RoleFilter
-from database.queries import find_user_by_telegram_id
-from database.manager_staff_activity import (
-    get_active_connection_tasks_count,
-    get_junior_manager_count,
-)
-
+from database.manager_staff_activity import fetch_staff_activity
+# Foydalanuvchi tilini olish uchun (users.language) — loyihangizdagi mavjud funksiya:
+from database.manager_inbox import get_user_by_telegram_id  # <- shu modulda language bor deb ishlatamiz
 
 router = Router()
 router.message.filter(RoleFilter("manager"))
-router.callback_query.filter(RoleFilter("manager"))
 
-# ---------- UI helperlar ----------
+# ---------------- I18N ----------------
+T = {
+    "title": {
+        "uz": "👥 Xodimlar faoliyati",
+        "ru": "👥 Активность сотрудников",
+    },
+    "legend": {
+        "uz": "Hisobot: menejerlar kesimi (connection/technician/aktiv)",
+        "ru": "Отчёт: по менеджерам (подключение/техник/активные)",
+    },
+    "totals": {
+        "uz": "— Jami xodimlar: {staff_cnt} | Connection: {conn_sum} ta | Technician: {tech_sum} ta | Hammasi: {total_sum} ta",
+        "ru": "— Всего сотрудников: {staff_cnt} | Подключение: {conn_sum} шт. | Техник: {tech_sum} шт. | Итого: {total_sum} шт.",
+    },
+    "conn": {"uz": "Connection", "ru": "Connection"},
+    "tech": {"uz": "Technician", "ru": "Technician"},
+    "active": {"uz": "Aktiv", "ru": "Активные"},
+    "role_manager": {"uz": "Menejer", "ru": "Менеджер"},
+    "role_jm": {"uz": "Kichik menejer", "ru": "Младший менеджер"},
+    "empty": {
+        "uz": "Ma'lumot topilmadi.",
+        "ru": "Данные не найдены.",
+    },
+}
 
-def _menu_keyboard() -> InlineKeyboardMarkup:
-    """
-    Asosiy inline menyu (rasmdagi kabi):
-      📊 Samaradorlik | 📈 Ish yuki | 👤 Xodimlar kesimi
-      🧑‍💼 Kichik menejerlar ishlari | ♻️ Yangilash | 🔙 Orqaga
-    """
-    rows = [
-        [InlineKeyboardButton(text="📊 Samaradorlik", callback_data="staff:eff")],
-        [InlineKeyboardButton(text="📈 Ish yuki", callback_data="staff:load")],
-        [InlineKeyboardButton(text="👤 Xodimlar kesimi", callback_data="staff:cut")],
-        [InlineKeyboardButton(text="🧑‍💼 Kichik menejerlar ishlari", callback_data="staff:jm")],
-        [InlineKeyboardButton(text="♻️ Yangilash", callback_data="staff:refresh")],
-        [InlineKeyboardButton(text="🔙 Orqaga", callback_data="staff:back")],
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+def _norm_lang(v: str | None) -> str:
+    if not v:
+        return "uz"
+    v = v.strip().lower()
+    if v in {"ru","rus","russian","ru-ru","ru_ru"}:
+        return "ru"
+    return "uz"
 
-def _back_keyboard() -> InlineKeyboardMarkup:
-    """Bo‘lim matnlari ostida faqat “Orqaga” tugmasi."""
-    return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="🔙 Orqaga", callback_data="staff:back")]]
-    )
+def _t(lang: str, key: str, **fmt) -> str:
+    lang = _norm_lang(lang)
+    s = T.get(key, {}).get(lang, T.get(key, {}).get("uz", key))
+    return s.format(**fmt) if fmt else s
 
-def _card_text(active_tasks: int, jm_count: int) -> str:
-    """
-    Kartochkadagi matn. Eslatma: sonlar DB’dan olinadi.
-    - Aktiv vazifalar: connection_orders (is_active = TRUE, status <> 'completed')
-    - Umumiy xodimlar: users (role = 'junior_manager')
-    """
-    return (
-        "👥 Xodimlar faoliyati\n\n"
-        f"🧾 Aktiv vazifalar: {active_tasks}\n"
-        f"🧑‍💼 Umumiy xodimlar: {jm_count}\n\n"
-        "Quyidagi bo‘limlardan birini tanlang:"
-    )
+def _role_label(lang: str, role: str) -> str:
+    role = (role or "").lower()
+    if role == "junior_manager":
+        return _t(lang, "role_jm")
+    return _t(lang, "role_manager")
 
-# ---------- Asosiy handler ----------
+def _medal(i: int) -> str:
+    return "🥇" if i == 0 else ("🥈" if i == 1 else ("🥉" if i == 2 else "•"))
 
-@router.message(F.text.in_(["👥 Xodimlar faoliyati", "👥 Активность сотрудников"]))
+def _build_report(lang: str, items: list[dict]) -> str:
+    if not items:
+        return _t(lang, "empty")
+
+    # Umumiy yig'indilar
+    conn_sum = sum(x["conn_count"] for x in items)
+    tech_sum = sum(x["tech_count"] for x in items)
+    total_sum = sum(x["total_count"] for x in items)
+
+    lines = [f"{_t(lang,'title')}\n", _t(lang, "legend"), ""]
+    for i, it in enumerate(items):
+        name = it.get("full_name") or "—"
+        role = _role_label(lang, it.get("role"))
+        conn_c = it.get("conn_count", 0)
+        tech_c = it.get("tech_count", 0)
+        active_c = it.get("active_count", 0)
+
+        # Ko‘rinish:
+        # 1. 🥇 Ism Fam (Rol)
+        #    ├ Connection: 7 ta
+        #    ├ Technician: 4 ta
+        #    └ Aktiv: 5 ta
+        head = f"{i+1}. {_medal(i)} {name} ({role})"
+        # birliklarni UZ: "ta" / RU: "шт."
+        unit = "ta" if _norm_lang(lang) == "uz" else "шт."
+        lines.append(head)
+        lines.append(f"├ {_t(lang,'conn')}: {conn_c} {unit}")
+        lines.append(f"├ {_t(lang,'tech')}: {tech_c} {unit}")
+        lines.append(f"└ {_t(lang,'active')}: {active_c} {unit}")
+
+    lines.append("")
+    lines.append(_t(lang, "totals",
+                    staff_cnt=len(items),
+                    conn_sum=conn_sum,
+                    tech_sum=tech_sum,
+                    total_sum=total_sum))
+    return "\n".join(lines)
+
+async def _get_lang(user_tg_id: int) -> str:
+    # users jadvalidan language olib, 'uz'/'ru' ga normalize qilamiz
+    user = await get_user_by_telegram_id(user_tg_id)
+    lng = (user or {}).get("language")
+    return _norm_lang(lng)
+
+# ---------------- ENTRY ----------------
+
+UZ_ENTRY_TEXT = "👥 Xodimlar faoliyati"
+RU_ENTRY_TEXT = "👥 Активность сотрудников"
+
+@router.message(F.text.in_([UZ_ENTRY_TEXT, RU_ENTRY_TEXT]))
 async def staff_activity_entry(message: Message, state: FSMContext):
-    """
-    Reply keyboarddan kelgan matnni qabul qiladi,
-    lekin ichkarida faqat INLINE bilan ishlaymiz.
-    """
-    # (Ixtiyoriy) foydalanuvchi tilini aniqlab olishingiz mumkin
-    _ = await find_user_by_telegram_id(message.from_user.id)
+    lang = await _get_lang(message.from_user.id)
+    items = await fetch_staff_activity()
+    text = _build_report(lang, items)
 
-    active_tasks = await get_active_connection_tasks_count()
-    jm_count = await get_junior_manager_count()
+    # Telegram xabar uzunligi limitidan oshmasligi uchun bo'laklab yuboramiz
+    # (odatda 4096, xavfsiz chegarani 3500 olamiz)
+    CHUNK = 3500
+    if len(text) <= CHUNK:
+        await message.answer(text)
+        return
 
-    await message.answer(
-        _card_text(active_tasks, jm_count),
-        reply_markup=_menu_keyboard()
-    )
-
-# ---------- Callbacklar (bo‘lim izohlari va yangilash) ----------
-
-@router.callback_query(F.data == "staff:eff")
-async def staff_efficiency(call: CallbackQuery, state: FSMContext):
-    """
-    📊 Samaradorlik — KPI va sifat ko‘rsatkichlari sahifasi.
-    Keyinchalik grafik/statistik funksiyalar shu yerdan chaqiriladi.
-    """
-    await call.answer()
-    await _safe_edit(
-        call,
-        "📊 Samaradorlik\n\n"
-        "• O‘rtacha bajarish vaqti\n"
-        "• O‘z vaqtida/kechikkan ishlar ulushi\n"
-        "• Eng samarali xodimlar TOP-5\n"
-        "• Muammolar toifasi bo‘yicha kesim",
-        _back_keyboard()
-    )
-
-@router.callback_query(F.data == "staff:load")
-async def staff_workload(call: CallbackQuery, state: FSMContext):
-    """
-    📈 Ish yuki — xodim boshiga aktiv vazifalar, navbatlar, pik soatlar.
-    """
-    await call.answer()
-    await _safe_edit(
-        call,
-        "📈 Ish yuki\n\n"
-        "• Xodim boshiga aktiv vazifalar soni\n"
-        "• Yangi kelayotgan ishlar oqimi (soat/kun)\n"
-        "• Ustuvor navbatlar va taqsimot\n"
-        "• Pik vaqtlar va teng taqsimlanmaslik",
-        _back_keyboard()
-    )
-
-@router.callback_query(F.data == "staff:cut")
-async def staff_cut(call: CallbackQuery, state: FSMContext):
-    """
-    👤 Xodimlar kesimi — lavozim, hudud, smena va tajriba bo‘yicha statistik ko‘rinish.
-    """
-    await call.answer()
-    await _safe_edit(
-        call,
-        "👤 Xodimlar kesimi\n\n"
-        "• Lavozimlar bo‘yicha son/ulush\n"
-        "• Hudud/smena bo‘yicha taqsimot\n"
-        "• Tajriba darajasi va faol/ta’til holatlari",
-        _back_keyboard()
-    )
-
-@router.callback_query(F.data == "staff:jm")
-async def staff_jm(call: CallbackQuery, state: FSMContext):
-    """
-    🧑‍💼 Kichik menejerlar ishlari — junior_manager’lar faoliyati.
-    """
-    await call.answer()
-    await _safe_edit(
-        call,
-        "🧑‍💼 Kichik menejerlar ishlari\n\n"
-        "• Biriktirilgan aktiv ishlar\n"
-        "• Yakunlash tezligi va kechikishlar\n"
-        "• Qayta ishlashlar va mijoz fikrlari\n"
-        "• O‘qitish/ko‘mak ehtiyojlari",
-        _back_keyboard()
-    )
-
-@router.callback_query(F.data == "staff:refresh")
-async def staff_refresh(call: CallbackQuery, state: FSMContext):
-    """
-    ♻️ Yangilash — sonlarni DB’dan qayta olib, kartochkani EDIT qiladi.
-    """
-    await call.answer("Yangilanmoqda…")
-    active_tasks = await get_active_connection_tasks_count()
-    jm_count = await get_junior_manager_count()
-    await _safe_edit(call, _card_text(active_tasks, jm_count), _menu_keyboard())
-
-@router.callback_query(F.data == "staff:back")
-async def staff_back(call: CallbackQuery, state: FSMContext):
-    """
-    🔙 Orqaga — asosiy kartochkaga qaytish (INLINE bilan).
-    """
-    await call.answer()
-    active_tasks = await get_active_connection_tasks_count()
-    jm_count = await get_junior_manager_count()
-    await _safe_edit(call, _card_text(active_tasks, jm_count), _menu_keyboard())
-
-# ---------- Kichik utility ----------
-
-async def _safe_edit(call: CallbackQuery, text: str, kb: InlineKeyboardMarkup):
-    """
-    Xabarni tahrirlash. Agar tahrirlab bo‘lmasa (masalan, eski matn bilan bir xil),
-    yangi xabar sifatida yuboradi.
-    """
-    try:
-        await call.message.edit_text(text, reply_markup=kb)
-    except TelegramBadRequest:
-        await call.message.answer(text, reply_markup=kb)
+    start = 0
+    while start < len(text):
+        await message.answer(text[start:start+CHUNK])
+        start += CHUNK
