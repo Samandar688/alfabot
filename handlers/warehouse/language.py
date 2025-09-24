@@ -28,9 +28,9 @@ async def language_handler(message: Message):
     ])
     
     if current_language == "uz":
-        text = "🌐 Til sozlamalari\n\nKerakli tilni tanlang:\n\n👤 Rol: Ombor"
+        text = "🌐 Til sozlamalari\n\nKerakli tilni tanlang:"
     else:
-        text = "🌐 Настройки языка\n\nВыберите нужный язык:\n\n👤 Роль: Склад"
+        text = "🌐 Настройки языка\n\nВыберите нужный язык:"
     
     await message.answer(text, reply_markup=keyboard)
 
@@ -43,9 +43,9 @@ async def language_callback_handler(callback: CallbackQuery):
     
     if success:
         if language == "uz":
-            text = "✅ Til muvaffaqiyatli o'zgartirildi!\n\n🇺🇿 O'zbek tili tanlandi\n\n👤 Rol: Ombor"
+            text = "✅ Til muvaffaqiyatli o'zgartirildi!\n\n🇺🇿 O'zbek tili tanlandi"
         else:
-            text = "✅ Язык успешно изменен!\n\n🇷🇺 Выбран русский язык\n\n👤 Роль: Склад"
+            text = "✅ Язык успешно изменен!\n\n🇷🇺 Выбран русский язык"
         
         # Avvalgi xabarni o'chirish va yangi tilda menyuni yuborish
         await callback.message.delete()

@@ -12,6 +12,7 @@ class AddMaterialStates(StatesGroup):
 class UpdateMaterialStates(StatesGroup):
     search = State()
     select = State()
+    quantity = State()  # Yangi state - faqat miqdor uchun
     name = State()
     description = State()
 
@@ -22,3 +23,10 @@ class TechnicianMaterialStates(StatesGroup):
 
 class StatsStates(StatesGroup):
     waiting_range = State()
+
+class MaterialRequestsStates(StatesGroup):
+    """Material requests uchun holatlar"""
+    main_menu = State()  # Material requests asosiy menusi
+    connection_orders = State()  # Ulanish arizalari materiallari
+    technician_orders = State()  # Texnik xizmat materiallari
+    staff_orders = State()  # Xodim arizalari materiallari

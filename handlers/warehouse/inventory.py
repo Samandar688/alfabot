@@ -26,7 +26,6 @@ from database.warehouse_queries import (
 router = Router()
 router.message.filter(RoleFilter("warehouse"))
 
-# ✅ Local search state (so we don't have to modify states/warehouse_states.py)
 class SearchMaterialStates(StatesGroup):
     query = State()
 
@@ -82,7 +81,7 @@ async def inv_add_new_start(message: Message, state: FSMContext):
 @router.message(StateFilter(WarehouseStates.inventory_menu), F.text.in_(["📦 Mavjud mahsulot sonini o'zgartirish"]))
 async def inv_update_existing_start(message: Message, state: FSMContext):
     await state.set_state(UpdateMaterialStates.search)
-    await message.answer("🔎 Yangilamoqchi bo'lgan mahsulot nomini kiriting:", reply_markup=cancel_kb())
+    await message.answer("🔎 Miqdorini o'zgartirmoqchi bo'lgan mahsulot nomini kiriting:", reply_markup=cancel_kb())
 
 @router.message(StateFilter(AddMaterialStates.name))
 async def inv_add_name(message: Message, state: FSMContext):
@@ -347,14 +346,10 @@ async def inv_search_query(message: Message, state: FSMContext):
 
 @router.message(StateFilter(WarehouseStates.inventory_menu), F.text.in_(["⚠️ Kam zaxira", "⚠️ Низкий запас"]))
 async def inv_low_stock(message: Message, state: FSMContext):
-    print(f"DEBUG: Kam zaxira tugmasi bosildi - User ID: {message.from_user.id}")
     try:
-        print("DEBUG: get_low_stock_materials chaqirilmoqda...")
         materials = await get_low_stock_materials(10)  
-        print(f"DEBUG: Topilgan materiallar soni: {len(materials) if materials else 0}")
         
         if not materials:
-            print("DEBUG: Hech qanday kam zaxirali material topilmadi")
             return await message.answer("✅ Barcha mahsulotlar yetarli miqdorda mavjud.")
         
         text = "⚠️ <b>Kam zaxirali mahsulotlar (10 dan kam):</b>\n\n"
@@ -429,15 +424,52 @@ async def inv_update_select(message: Message, state: FSMContext):
         return await message.answer("❗ Noto'g'ri tanlov. Ro'yxatdan birini tanlang:")
     
     await state.update_data(selected_material=selected_material)
-    await state.set_state(UpdateMaterialStates.name)
+    await state.set_state(UpdateMaterialStates.quantity)
     
     await message.answer(
         f"📦 Tanlangan mahsulot: <b>{selected_material['name']}</b>\n"
-        f"📝 Joriy tavsif: <b>{selected_material.get('description', 'Tavsif yo\'q')}</b>\n\n"
-        f"✏️ Yangi nom kiriting:",
+        f"📊 Joriy miqdor: <b>{selected_material['quantity']}</b> dona\n\n"
+        f"➕ Qo'shiladigan miqdorni kiriting (faqat musbat son):",
         parse_mode="HTML",
         reply_markup=cancel_kb()
     )
+
+@router.message(StateFilter(UpdateMaterialStates.quantity))
+async def inv_update_quantity(message: Message, state: FSMContext):
+    if message.text.strip().lower() in ("❌ bekor qilish", "bekor", "cancel"):
+        await state.set_state(WarehouseStates.inventory_menu)
+        return await message.answer("❌ Bekor qilindi.\n\n📦 Inventarizatsiya menyusi:", reply_markup=get_inventory_actions_keyboard("uz"))
+
+    try:
+        additional_quantity = int(message.text.strip())
+        if additional_quantity <= 0:
+            return await message.answer("❗ Faqat musbat son kiriting (0 dan katta):")
+    except ValueError:
+        return await message.answer("❗ Noto'g'ri format. Faqat son kiriting:")
+
+    data = await state.get_data()
+    selected_material = data['selected_material']
+    
+    try:
+        updated_material = await update_material_quantity(selected_material['id'], additional_quantity)
+        
+        await state.set_state(WarehouseStates.inventory_menu)
+        await message.answer(
+            f"✅ Mahsulot miqdori muvaffaqiyatli yangilandi!\n\n"
+            f"📦 Mahsulot: <b>{selected_material['name']}</b>\n"
+            f"📊 Avvalgi miqdor: <b>{selected_material['quantity']}</b> dona\n"
+            f"➕ Qo'shilgan: <b>{additional_quantity}</b> dona\n"
+            f"📊 Yangi miqdor: <b>{updated_material['quantity']}</b> dona\n\n"
+            f"📦 Inventarizatsiya menyusi:",
+            parse_mode="HTML",
+            reply_markup=get_inventory_actions_keyboard("uz")
+        )
+    except Exception as e:
+        await state.set_state(WarehouseStates.inventory_menu)
+        await message.answer(
+            f"❌ Xatolik yuz berdi: {str(e)}\n\n📦 Inventarizatsiya menyusi:",
+            reply_markup=get_inventory_actions_keyboard("uz")
+        )
 
 @router.message(StateFilter(UpdateMaterialStates.name))
 async def inv_update_name(message: Message, state: FSMContext):

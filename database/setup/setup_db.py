@@ -94,7 +94,7 @@ CREATE TYPE technician_order_status AS ENUM (
 
 -- Saff order statuses
 CREATE TYPE saff_order_status AS ENUM (
-    'in_call_center', 'in_manager', 'in_controller', 'in_technician',
+    'in_call_center', 'in_manager', 'in_controller', 'in_technician', 'in_warehouse',
     'completed', 'cancelled'
 );
 

@@ -283,17 +283,23 @@ async def get_user_orders_paginated(telegram_id: int, offset: int = 0, limit: in
     finally:
         await conn.close()
 
-async def create_smart_service_order(user_id: int, category: str, service_type: str, address: str, latitude: float = None, longitude: float = None) -> int:
+async def create_smart_service_order(order_data: dict) -> int:
     """Create a smart service order in smart_service_orders table."""
     conn = await asyncpg.connect(settings.DB_URL)
     try:
         row = await conn.fetchrow(
             """
-            INSERT INTO smart_service_orders (user_id, category, service_type, address, latitude, longitude)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO smart_service_orders (user_id, category, service_type, address, latitude, longitude, is_active)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING id
             """,
-            user_id, category, service_type, address, latitude, longitude
+            order_data['user_id'], 
+            order_data['category'], 
+            order_data['service_type'], 
+            order_data['address'], 
+            order_data.get('latitude'), 
+            order_data.get('longitude'),
+            order_data.get('is_active', True)
         )
         return row["id"]
     finally:

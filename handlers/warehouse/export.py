@@ -158,19 +158,13 @@ async def export_format_handler(callback: CallbackQuery, state: FSMContext):
             caption=f"📄 <b>{title}</b>\n\n"
                    f"📊 Ma'lumotlar soni: {len(formatted_data)}\n"
                    f"📅 Yaratilgan: {ExportUtils.get_filename_with_timestamp('', '').split('_')[1][:8]}\n"
-                   f"📁 Format: {format_type.upper()}",
+                   f"📁 Format: {format_type.upper()}\n\n"
+                   f"✅ Export muvaffaqiyatli yakunlandi!",
             parse_mode="HTML"
         )
         
-        # Show success message
-        await callback.message.edit_text(
-            "✅ <b>Export muvaffaqiyatli yakunlandi!</b>\n\n"
-            f"📄 Fayl: {filename}\n"
-            f"📊 Ma'lumotlar: {len(formatted_data)} ta yozuv\n"
-            f"📁 Format: {format_type.upper()}\n\n"
-            "Fayl yuqorida yuborildi.",
-            parse_mode="HTML"
-        )
+        # Clear the processing message
+        await callback.message.delete()
         
         await callback.answer("✅ Export tayyor!")
         await state.clear()
