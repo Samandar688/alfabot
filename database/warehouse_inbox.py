@@ -49,6 +49,49 @@ async def fetch_warehouse_connection_orders(
         await conn.close()
 
 
+async def fetch_warehouse_connection_orders_with_materials(
+    limit: int = 50,
+    offset: int = 0
+) -> List[Dict[str, Any]]:
+    """
+    'in_warehouse' holatidagi va material_requests mavjud bo'lgan ulanish arizalari.
+    """
+    conn = await _conn()
+    try:
+        rows = await conn.fetch(
+            """
+            SELECT
+                co.id,
+                co.address,
+                co.region,
+                co.status,
+                co.created_at,
+                co.updated_at,
+                co.notes,
+                co.jm_notes,
+                u.full_name AS client_name,
+                u.phone AS client_phone,
+                u.telegram_id AS client_telegram_id,
+                t.name AS tariff_name
+            FROM connection_orders co
+            LEFT JOIN users u ON u.id = co.user_id
+            LEFT JOIN tarif t ON t.id = co.tarif_id
+            WHERE co.status = 'in_warehouse'
+              AND co.is_active = TRUE
+              AND EXISTS (
+                  SELECT 1 FROM material_requests mr
+                  WHERE mr.connection_order_id = co.id
+              )
+            ORDER BY co.created_at DESC
+            LIMIT $1 OFFSET $2
+            """,
+            limit, offset
+        )
+        return [dict(r) for r in rows]
+    finally:
+        await conn.close()
+
+
 async def count_warehouse_connection_orders() -> int:
     """
     Omborda turgan ulanish arizalari soni
@@ -64,6 +107,172 @@ async def count_warehouse_connection_orders() -> int:
             """
         )
         return int(count or 0)
+    finally:
+        await conn.close()
+
+
+async def count_warehouse_connection_orders_with_materials() -> int:
+    """
+    Omborda turgan va material so'rovi mavjud ulanish arizalari soni.
+    """
+    conn = await _conn()
+    try:
+        count = await conn.fetchval(
+            """
+            SELECT COUNT(*)
+            FROM connection_orders co
+            WHERE co.status = 'in_warehouse'
+              AND co.is_active = TRUE
+              AND EXISTS (
+                  SELECT 1 FROM material_requests mr
+                  WHERE mr.connection_order_id = co.id
+              )
+            """
+        )
+        return int(count or 0)
+    finally:
+        await conn.close()
+
+
+async def fetch_materials_for_connection_order(order_id: int) -> List[Dict[str, Any]]:
+    """
+    Berilgan connection order uchun material so'rovlari (nom va miqdor bilan).
+    """
+    conn = await _conn()
+    try:
+        rows = await conn.fetch(
+            """
+            SELECT m.id AS material_id, m.name AS material_name, mr.quantity
+            FROM material_requests mr
+            JOIN materials m ON m.id = mr.material_id
+            WHERE mr.connection_order_id = $1
+            ORDER BY m.name
+            """,
+            order_id
+        )
+        return [dict(r) for r in rows]
+    finally:
+        await conn.close()
+
+
+async def confirm_materials_and_update_status_for_connection(order_id: int, actor_user_id: int) -> bool:
+    """
+    Material so'rovlari bo'yicha material_and_technician ga yozadi,
+    va connection_orders.status ni 'between_controller_technician' ga o'zgartiradi.
+    
+    Args:
+        order_id: The ID of the connection order
+        actor_user_id: The ID of the user confirming the materials (required)
+    """
+    if not actor_user_id:
+        raise ValueError("actor_user_id is required")
+        
+    conn = await _conn()
+    try:
+        async with conn.transaction():
+            mats = await conn.fetch(
+                """
+                SELECT material_id, quantity
+                FROM material_requests
+                WHERE connection_order_id = $1
+                """,
+                order_id
+            )
+            for r in mats:
+                await conn.execute(
+                    """
+                    INSERT INTO material_and_technician (user_id, material_id, quantity)
+                    VALUES ($1, $2, $3)
+                    """,
+                    actor_user_id, int(r["material_id"]), int(r["quantity"]) or 0
+                )
+
+            updated = await conn.execute(
+                """
+                UPDATE connection_orders
+                SET status = 'between_controller_technician'
+                WHERE id = $1 AND status = 'in_warehouse'
+                """,
+                order_id
+            )
+            return True
+    finally:
+        await conn.close()
+
+
+async def confirm_materials_and_update_status_for_technician(order_id: int, actor_user_id: int) -> bool:
+    """
+    Texnik xizmat arizalari uchun materiallarni tasdiqlaydi
+    va technician_orders.status ni 'in_progress' ga o'zgartiradi.
+    
+    Args:
+        order_id: The ID of the technician order
+        actor_user_id: The ID of the user confirming the materials (required)
+    """
+    if not actor_user_id:
+        raise ValueError("actor_user_id is required")
+        
+    conn = await _conn()
+    try:
+        async with conn.transaction():
+            # Update the status to in_progress
+            updated = await conn.execute(
+                """
+                UPDATE technician_orders
+                SET status = 'in_progress',
+                    warehouse_user_id = $1
+                WHERE id = $2 AND status = 'in_warehouse'
+                """,
+                actor_user_id, order_id
+            )
+            return True
+    finally:
+        await conn.close()
+
+
+async def confirm_materials_and_update_status_for_staff(order_id: int, actor_user_id: int) -> bool:
+    """
+    Xodim arizalari uchun materiallarni tasdiqlaydi
+    va staff_orders.status ni 'completed' ga o'zgartiradi.
+    
+    Args:
+        order_id: The ID of the staff order
+        actor_user_id: The ID of the user confirming the materials (required)
+    """
+    if not actor_user_id:
+        raise ValueError("actor_user_id is required")
+        
+    conn = await _conn()
+    try:
+        async with conn.transaction():
+            # First, check if the order exists and is in the correct status
+            order = await conn.fetchrow(
+                "SELECT id FROM staff_orders WHERE id = $1 AND status = 'in_warehouse'",
+                order_id
+            )
+            
+            if not order:
+                return False
+                
+            # Update the status to completed
+            result = await conn.execute(
+                """
+                UPDATE staff_orders
+                SET status = 'completed',
+                    warehouse_user_id = $1,
+                    updated_at = NOW()
+                WHERE id = $2 AND status = 'in_warehouse'
+                RETURNING id
+                """,
+                actor_user_id, 
+                order_id
+            )
+            
+            # Check if the update was successful
+            return bool(result)
+    except Exception as e:
+        print(f"Error in confirm_materials_and_update_status_for_staff: {str(e)}")
+        return False
     finally:
         await conn.close()
 

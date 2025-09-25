@@ -9,6 +9,12 @@ from filters.role_filter import RoleFilter
 from database.queries import find_user_by_telegram_id
 from database.warehouse_inbox import (
     fetch_warehouse_connection_orders,
+    fetch_warehouse_connection_orders_with_materials,
+    count_warehouse_connection_orders_with_materials,
+    fetch_materials_for_connection_order,
+    confirm_materials_and_update_status_for_connection,
+    confirm_materials_and_update_status_for_technician,
+    confirm_materials_and_update_status_for_staff,
     fetch_warehouse_technician_orders,
     fetch_warehouse_staff_orders,
     get_all_warehouse_orders_count,
@@ -19,7 +25,10 @@ from database.warehouse_inbox import (
 from keyboards.warehouse_buttons import (
     get_warehouse_main_menu,
     get_warehouse_inbox_keyboard,
-    get_warehouse_inbox_navigation_keyboard
+    get_warehouse_inbox_navigation_keyboard,
+    get_connection_inbox_controls,
+    get_technician_inbox_controls,
+    get_staff_inbox_controls
 )
 
 router = Router()
@@ -44,11 +53,23 @@ def esc(v) -> str:
 
 def format_connection_order(order: dict, index: int, total: int) -> str:
     """Format connection order for display"""
+    # Fallbacks for client fields in case LEFT JOIN returns NULL or different key names are used
+    client_name_value = (
+        order.get('client_name')
+        or order.get('full_name')
+        or order.get('client_full_name')
+        or order.get('name')
+    )
+    client_phone_value = (
+        order.get('client_phone')
+        or order.get('phone')
+        or order.get('client_phone_number')
+    )
     return (
         f"📦 <b>Ombor - Ulanish arizasi</b>\n\n"
         f"🆔 <b>ID:</b> {esc(order.get('id'))}\n"
-        f"👤 <b>Mijoz:</b> {esc(order.get('client_name'))}\n"
-        f"📞 <b>Telefon:</b> {esc(order.get('client_phone'))}\n"
+        f"👤 <b>Mijoz:</b> {esc(client_name_value)}\n"
+        f"📞 <b>Telefon:</b> {esc(client_phone_value)}\n"
         f"📍 <b>Manzil:</b> {esc(order.get('address'))}\n"
         f"🌍 <b>Hudud:</b> {esc(order.get('region'))}\n"
         f"📊 <b>Tarif:</b> {esc(order.get('tariff_name'))}\n"
@@ -61,11 +82,22 @@ def format_connection_order(order: dict, index: int, total: int) -> str:
 
 def format_technician_order(order: dict, index: int, total: int) -> str:
     """Format technician order for display"""
+    client_name_value = (
+        order.get('client_name')
+        or order.get('full_name')
+        or order.get('client_full_name')
+        or order.get('name')
+    )
+    client_phone_value = (
+        order.get('client_phone')
+        or order.get('phone')
+        or order.get('client_phone_number')
+    )
     return (
         f"🔧 <b>Ombor - Texnik xizmat arizasi</b>\n\n"
         f"🆔 <b>ID:</b> {esc(order.get('id'))}\n"
-        f"👤 <b>Mijoz:</b> {esc(order.get('client_name'))}\n"
-        f"📞 <b>Telefon:</b> {esc(order.get('client_phone'))}\n"
+        f"👤 <b>Mijoz:</b> {esc(client_name_value)}\n"
+        f"📞 <b>Telefon:</b> {esc(client_phone_value)}\n"
         f"🏠 <b>Abonent ID:</b> {esc(order.get('abonent_id'))}\n"
         f"📍 <b>Manzil:</b> {esc(order.get('address'))}\n"
         f"🌍 <b>Hudud:</b> {esc(order.get('region'))}\n"
@@ -79,11 +111,22 @@ def format_technician_order(order: dict, index: int, total: int) -> str:
 
 def format_staff_order(order: dict, index: int, total: int) -> str:
     """Format staff order for display"""
+    client_name_value = (
+        order.get('client_name')
+        or order.get('full_name')
+        or order.get('client_full_name')
+        or order.get('name')
+    )
+    client_phone_value = (
+        order.get('client_phone')
+        or order.get('phone')
+        or order.get('client_phone_number')
+    )
     return (
         f"👥 <b>Ombor - Xodim arizasi</b>\n\n"
         f"🆔 <b>ID:</b> {esc(order.get('id'))}\n"
-        f"👤 <b>Mijoz:</b> {esc(order.get('client_name'))}\n"
-        f"📞 <b>Telefon:</b> {esc(order.get('phone'))}\n"
+        f"👤 <b>Mijoz:</b> {esc(client_name_value)}\n"
+        f"📞 <b>Telefon:</b> {esc(client_phone_value)}\n"
         f"🏠 <b>Abonent ID:</b> {esc(order.get('abonent_id'))}\n"
         f"📍 <b>Manzil:</b> {esc(order.get('address'))}\n"
         f"🌍 <b>Hudud:</b> {esc(order.get('region'))}\n"
@@ -125,10 +168,11 @@ async def inbox_handler(message: Message, state: FSMContext):
 @router.callback_query(F.data == "warehouse_inbox_connection")
 async def show_connection_orders(callback: CallbackQuery, state: FSMContext):
     """Show connection orders"""
-    await state.update_data(order_type="connection", current_index=0)
+    await state.update_data(current_order_type="connection", current_index=0)
     
-    orders = await fetch_warehouse_connection_orders(limit=1, offset=0)
-    total_count = await count_warehouse_connection_orders()
+    # Faqat material_requests mavjud bo'lgan connection arizalarini ko'rsatamiz
+    orders = await fetch_warehouse_connection_orders_with_materials(limit=1, offset=0)
+    total_count = await count_warehouse_connection_orders_with_materials()
     
     if not orders:
         await callback.message.edit_text(
@@ -139,8 +183,10 @@ async def show_connection_orders(callback: CallbackQuery, state: FSMContext):
         return
     
     order = orders[0]
-    text = format_connection_order(order, 0, total_count)
-    keyboard = get_warehouse_inbox_navigation_keyboard(0, total_count)
+    mats = await fetch_materials_for_connection_order(order.get('id'))
+    mats_text = "\n".join([f"• {esc(m['material_name'])} — {esc(m['quantity'])} dona" for m in mats]) if mats else "—"
+    text = format_connection_order(order, 0, total_count) + f"\n\n🧾 <b>Materiallar:</b>\n{mats_text}"
+    keyboard = get_connection_inbox_controls(0, total_count, order.get('id'))
     
     await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
 
@@ -148,7 +194,7 @@ async def show_connection_orders(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "warehouse_inbox_technician")
 async def show_technician_orders(callback: CallbackQuery, state: FSMContext):
     """Show technician orders"""
-    await state.update_data(order_type="technician", current_index=0)
+    await state.update_data(current_order_type="technician", current_index=0)
     
     orders = await fetch_warehouse_technician_orders(limit=1, offset=0)
     total_count = await count_warehouse_technician_orders()
@@ -163,7 +209,7 @@ async def show_technician_orders(callback: CallbackQuery, state: FSMContext):
     
     order = orders[0]
     text = format_technician_order(order, 0, total_count)
-    keyboard = get_warehouse_inbox_navigation_keyboard(0, total_count)
+    keyboard = get_technician_inbox_controls(0, total_count, order.get('id'))
     
     await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
 
@@ -171,7 +217,7 @@ async def show_technician_orders(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "warehouse_inbox_staff")
 async def show_staff_orders(callback: CallbackQuery, state: FSMContext):
     """Show staff orders"""
-    await state.update_data(order_type="staff", current_index=0)
+    await state.update_data(current_order_type="staff", current_index=0)
     
     orders = await fetch_warehouse_staff_orders(limit=1, offset=0)
     total_count = await count_warehouse_staff_orders()
@@ -186,7 +232,7 @@ async def show_staff_orders(callback: CallbackQuery, state: FSMContext):
     
     order = orders[0]
     text = format_staff_order(order, 0, total_count)
-    keyboard = get_warehouse_inbox_navigation_keyboard(0, total_count)
+    keyboard = get_staff_inbox_controls(0, total_count, order.get('id'))
     
     await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
 
@@ -204,62 +250,63 @@ async def navigate_prev(callback: CallbackQuery, state: FSMContext):
     current_order_type = data.get('current_order_type', 'connection')
     
     if current_order_type == "connection":
-        orders = await fetch_warehouse_connection_orders(limit=1, offset=new_index)
-        total_count = await count_warehouse_connection_orders()
+        orders = await fetch_warehouse_connection_orders_with_materials(limit=1, offset=new_index)
+        total_count = await count_warehouse_connection_orders_with_materials()
         if orders:
-            text = format_connection_order(orders[0], new_index, total_count)
-            keyboard = get_warehouse_inbox_navigation_keyboard(new_index, total_count)
+            mats = await fetch_materials_for_connection_order(orders[0].get('id'))
+            mats_text = "\n".join([f"• {esc(m['material_name'])} — {esc(m['quantity'])} dona" for m in mats]) if mats else "—"
+            text = format_connection_order(orders[0], new_index, total_count) + f"\n\n🧾 <b>Materiallar:</b>\n{mats_text}"
+            keyboard = get_connection_inbox_controls(new_index, total_count, orders[0].get('id'))
     elif current_order_type == "technician":
         orders = await fetch_warehouse_technician_orders(limit=1, offset=new_index)
         total_count = await count_warehouse_technician_orders()
         if orders:
             text = format_technician_order(orders[0], new_index, total_count)
-            keyboard = get_warehouse_inbox_navigation_keyboard(new_index, total_count)
+            keyboard = get_connection_inbox_controls(new_index, total_count, orders[0].get('id'))
     elif current_order_type == "staff":
         orders = await fetch_warehouse_staff_orders(limit=1, offset=new_index)
         total_count = await count_warehouse_staff_orders()
         if orders:
             text = format_staff_order(orders[0], new_index, total_count)
-            keyboard = get_warehouse_inbox_navigation_keyboard(new_index, total_count)
+            keyboard = get_connection_inbox_controls(new_index, total_count, orders[0].get('id'))
     
     try:
         await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     except TelegramBadRequest:
         pass
 
-@router.callback_query(F.data.startswith("warehouse_next_"))
+@router.callback_query(F.data.startswith("warehouse_next_inbox_"))
 async def navigate_next(callback: CallbackQuery, state: FSMContext):
     """Navigate to next order"""
     parts = callback.data.split("_")
-    
-    # Check if this is a material request navigation
-    if len(parts) > 3 and parts[2] == "material" and parts[3] == "requests":
-        # This is handled by the orders.py handler, so we skip it here
-        return
-    
-    order_type = parts[2]
     new_index = int(parts[3])
-    
+
     await state.update_data(current_index=new_index)
-    
-    if order_type == "connection":
-        orders = await fetch_warehouse_connection_orders(limit=1, offset=new_index)
-        total_count = await count_warehouse_connection_orders()
+
+    # Determine current order type from state
+    data = await state.get_data()
+    current_order_type = data.get('current_order_type', 'connection')
+
+    if current_order_type == "connection":
+        orders = await fetch_warehouse_connection_orders_with_materials(limit=1, offset=new_index)
+        total_count = await count_warehouse_connection_orders_with_materials()
         if orders:
-            text = format_connection_order(orders[0], new_index, total_count)
-            keyboard = get_warehouse_order_navigation_keyboard(new_index, total_count, "connection")
-    elif order_type == "technician":
+            mats = await fetch_materials_for_connection_order(orders[0].get('id'))
+            mats_text = "\n".join([f"• {esc(m['material_name'])} — {esc(m['quantity'])} dona" for m in mats]) if mats else "—"
+            text = format_connection_order(orders[0], new_index, total_count) + f"\n\n🧾 <b>Materiallar:</b>\n{mats_text}"
+            keyboard = get_connection_inbox_controls(new_index, total_count, orders[0].get('id'))
+    elif current_order_type == "technician":
         orders = await fetch_warehouse_technician_orders(limit=1, offset=new_index)
         total_count = await count_warehouse_technician_orders()
         if orders:
             text = format_technician_order(orders[0], new_index, total_count)
-            keyboard = get_warehouse_order_navigation_keyboard(new_index, total_count, "technician")
-    elif order_type == "staff":
+            keyboard = get_connection_inbox_controls(new_index, total_count, orders[0].get('id'))
+    elif current_order_type == "staff":
         orders = await fetch_warehouse_staff_orders(limit=1, offset=new_index)
         total_count = await count_warehouse_staff_orders()
         if orders:
             text = format_staff_order(orders[0], new_index, total_count)
-            keyboard = get_warehouse_order_navigation_keyboard(new_index, total_count, "staff")
+            keyboard = get_connection_inbox_controls(new_index, total_count, orders[0].get('id'))
     
     try:
         await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
@@ -286,6 +333,140 @@ async def back_to_categories(callback: CallbackQuery, state: FSMContext):
     
     keyboard = get_warehouse_inbox_keyboard()
     await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+
+
+@router.callback_query(F.data.startswith("warehouse_confirm_conn_"))
+async def confirm_connection_materials(callback: CallbackQuery, state: FSMContext):
+    """Ulanish arizasi uchun materiallarni tasdiqlash"""
+    try:
+        order_id = int(callback.data.replace("warehouse_confirm_conn_", ""))
+    except ValueError:
+        return await callback.answer("❌ Noto'g'ri ID", show_alert=True)
+
+    # Get the user from database to get the internal user ID
+    user = await find_user_by_telegram_id(callback.from_user.id)
+    if not user:
+        return await callback.answer("❌ Foydalanuvchi topilmadi", show_alert=True)
+    
+    try:
+        ok = await confirm_materials_and_update_status_for_connection(order_id, user['id'])
+        if not ok:
+            return await callback.answer("❌ Tasdiqlashda xato", show_alert=True)
+            
+        await callback.answer("✅ Tasdiqlandi")
+    except ValueError as e:
+        return await callback.answer(f"❌ Xatolik: {str(e)}", show_alert=True)
+    except Exception as e:
+        return await callback.answer("❌ Tasdiqlashda xato yuz berdi", show_alert=True)
+    # After confirming, go back to list starting at current index
+    data = await state.get_data()
+    idx = int(data.get('current_index', 0))
+    # Reload current selection
+    orders = await fetch_warehouse_connection_orders_with_materials(limit=1, offset=idx)
+    total_count = await count_warehouse_connection_orders_with_materials()
+    if not orders:
+        # Nothing left, go back to categories
+        return await back_to_categories(callback, state)
+
+    order = orders[0]
+    mats = await fetch_materials_for_connection_order(order.get('id'))
+    mats_text = "\n".join([f"• {esc(m['material_name'])} — {esc(m['quantity'])} dona" for m in mats]) if mats else "—"
+    text = format_connection_order(order, idx, total_count) + f"\n\n🧾 <b>Materiallar:</b>\n{mats_text}"
+    keyboard = get_connection_inbox_controls(idx, total_count, order.get('id'))
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    except TelegramBadRequest:
+        pass
+
+@router.callback_query(F.data.startswith("warehouse_confirm_tech_"))
+async def confirm_technician_materials(callback: CallbackQuery, state: FSMContext):
+    """Texnik xizmat arizasi uchun materiallarni tasdiqlash"""
+    try:
+        order_id = int(callback.data.replace("warehouse_confirm_tech_", ""))
+    except ValueError:
+        return await callback.answer("❌ Noto'g'ri ID", show_alert=True)
+
+    # Get the user from database to get the internal user ID
+    user = await find_user_by_telegram_id(callback.from_user.id)
+    if not user:
+        return await callback.answer("❌ Foydalanuvchi topilmadi", show_alert=True)
+    
+    try:
+        ok = await confirm_materials_and_update_status_for_technician(order_id, user['id'])
+        if not ok:
+            return await callback.answer("❌ Tasdiqlashda xato", show_alert=True)
+            
+        await callback.answer("✅ Tasdiqlandi")
+    except ValueError as e:
+        return await callback.answer(f"❌ Xatolik: {str(e)}", show_alert=True)
+    except Exception as e:
+        return await callback.answer("❌ Tasdiqlashda xato yuz berdi", show_alert=True)
+    
+    # After confirming, go back to list starting at current index
+    data = await state.get_data()
+    idx = int(data.get('current_index', 0))
+    
+    # Reload current selection
+    orders = await fetch_warehouse_technician_orders(limit=1, offset=idx)
+    total_count = await count_warehouse_technician_orders()
+    
+    if not orders:
+        # Nothing left, go back to categories
+        return await back_to_categories(callback, state)
+
+    order = orders[0]
+    text = format_technician_order(order, idx, total_count)
+    keyboard = get_connection_inbox_controls(idx, total_count, order.get('id'))
+    
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    except TelegramBadRequest:
+        pass
+
+@router.callback_query(F.data.startswith("warehouse_confirm_staff_"))
+async def confirm_staff_materials(callback: CallbackQuery, state: FSMContext):
+    """Xodim arizasi uchun materiallarni tasdiqlash"""
+    try:
+        order_id = int(callback.data.replace("warehouse_confirm_staff_", ""))
+    except ValueError:
+        return await callback.answer("❌ Noto'g'ri ID", show_alert=True)
+
+    # Get the user from database to get the internal user ID
+    user = await find_user_by_telegram_id(callback.from_user.id)
+    if not user:
+        return await callback.answer("❌ Foydalanuvchi topilmadi", show_alert=True)
+    
+    try:
+        ok = await confirm_materials_and_update_status_for_staff(order_id, user['id'])
+        if not ok:
+            return await callback.answer("❌ Tasdiqlashda xato", show_alert=True)
+            
+        await callback.answer("✅ Tasdiqlandi")
+    except ValueError as e:
+        return await callback.answer(f"❌ Xatolik: {str(e)}", show_alert=True)
+    except Exception as e:
+        return await callback.answer("❌ Tasdiqlashda xato yuz berdi", show_alert=True)
+    
+    # After confirming, go back to list starting at current index
+    data = await state.get_data()
+    idx = int(data.get('current_index', 0))
+    
+    # Reload current selection
+    orders = await fetch_warehouse_staff_orders(limit=1, offset=idx)
+    total_count = await count_warehouse_staff_orders()
+    
+    if not orders:
+        # Nothing left, go back to categories
+        return await back_to_categories(callback, state)
+
+    order = orders[0]
+    text = format_staff_order(order, idx, total_count)
+    keyboard = get_connection_inbox_controls(idx, total_count, order.get('id'))
+    
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    except TelegramBadRequest:
+        pass
 
 @router.callback_query(F.data == "warehouse_inbox_back")
 async def inbox_back(callback: CallbackQuery, state: FSMContext):

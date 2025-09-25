@@ -18,7 +18,7 @@ from database.warehouse_inbox import (
 )
 from keyboards.warehouse_buttons import (
     get_warehouse_material_requests_keyboard,
-    get_warehouse_order_navigation_keyboard,
+    get_warehouse_material_requests_navigation_keyboard,
     get_warehouse_main_menu
 )
 
@@ -126,7 +126,7 @@ async def show_material_requests_connection(callback: CallbackQuery, state: FSMC
         return
     
     text = format_material_request(material_requests[0], 0, total_count)
-    keyboard = get_warehouse_order_navigation_keyboard(0, total_count, "material_requests_connection")
+    keyboard = get_warehouse_material_requests_navigation_keyboard(0, total_count, "material_requests_connection")
     
     await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     await callback.answer()
@@ -150,7 +150,7 @@ async def show_material_requests_technician(callback: CallbackQuery, state: FSMC
         return
     
     text = format_material_request(material_requests[0], 0, total_count)
-    keyboard = get_warehouse_order_navigation_keyboard(0, total_count, "material_requests_technician")
+    keyboard = get_warehouse_material_requests_navigation_keyboard(0, total_count, "material_requests_technician")
     
     await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     await callback.answer()
@@ -174,7 +174,7 @@ async def show_material_requests_staff(callback: CallbackQuery, state: FSMContex
         return
     
     text = format_material_request(material_requests[0], 0, total_count)
-    keyboard = get_warehouse_order_navigation_keyboard(0, total_count, "material_requests_staff")
+    keyboard = get_warehouse_material_requests_navigation_keyboard(0, total_count, "material_requests_staff")
     
     await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     await callback.answer()
@@ -205,7 +205,7 @@ async def navigate_material_requests_prev(callback: CallbackQuery, state: FSMCon
     
     if material_requests:
         text = format_material_request(material_requests[0], new_index, total_count)
-        keyboard = get_warehouse_order_navigation_keyboard(new_index, total_count, request_type)
+        keyboard = get_warehouse_material_requests_navigation_keyboard(new_index, total_count, request_type)
         await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     
     await callback.answer()
@@ -235,7 +235,7 @@ async def navigate_material_requests_next(callback: CallbackQuery, state: FSMCon
     
     if material_requests:
         text = format_material_request(material_requests[0], new_index, total_count)
-        keyboard = get_warehouse_order_navigation_keyboard(new_index, total_count, request_type)
+        keyboard = get_warehouse_material_requests_navigation_keyboard(new_index, total_count, request_type)
         await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     
     await callback.answer()

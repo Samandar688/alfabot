@@ -129,13 +129,13 @@ def get_warehouse_material_requests_keyboard(lang: str = "uz") -> InlineKeyboard
         "connection": "🔗 Ulanish arizalari materiallari",
         "technician": "🔧 Texnik xizmat materiallari",
         "staff": "👥 Xodim arizalari materiallari",
-        "back": "🔙 Orqaga"
+        "back": "❌ Yopish"
     }
     ru = {
         "connection": "🔗 Материалы заявок на подключение",
         "technician": "🔧 Материалы техобслуживания", 
         "staff": "👥 Материалы заявок сотрудников",
-        "back": "🔙 Назад"
+        "back": "❌ Закрыть"
     }
     T = uz if lang == "uz" else ru
     
@@ -168,13 +168,13 @@ def get_warehouse_inbox_keyboard(lang: str = "uz") -> InlineKeyboardMarkup:
         "connection": "🔗 Ulanish arizalari",
         "technician": "🔧 Texnik xizmat",
         "staff": "👥 Xodim arizalari",
-        "back": "🔙 Orqaga"
+        "back": "❌ Yopish"
     }
     ru = {
         "connection": "🔗 Заявки на подключение",
         "technician": "🔧 Техническое обслуживание", 
         "staff": "👥 Заявки сотрудников",
-        "back": "🔙 Назад"
+        "back": "❌ Закрыть"
     }
     T = uz if lang == "uz" else ru
     
@@ -227,6 +227,143 @@ def get_warehouse_inbox_navigation_keyboard(
     
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
+
+def get_connection_inbox_controls(
+    current_index: int,
+    total_count: int,
+    order_id: int,
+    lang: str = "uz"
+) -> InlineKeyboardMarkup:
+    """
+    Connection inbox uchun navigatsiya + Tasdiqlash tugmasi.
+    """
+    keyboard = []
+
+    # Top row: navigation
+    nav_row = []
+    if current_index > 0:
+        nav_row.append(InlineKeyboardButton(
+            text="⬅️",
+            callback_data=f"warehouse_prev_inbox_{current_index-1}"
+        ))
+    nav_row.append(InlineKeyboardButton(
+        text=f"{current_index + 1}/{total_count}",
+        callback_data="warehouse_page_info"
+    ))
+    if current_index < total_count - 1:
+        nav_row.append(InlineKeyboardButton(
+            text="➡️",
+            callback_data=f"warehouse_next_inbox_{current_index+1}"
+        ))
+    if nav_row:
+        keyboard.append(nav_row)
+
+    # Confirm row
+    confirm_text = "✅ Tasdiqlash" if lang == "uz" else "✅ Подтвердить"
+    keyboard.append([
+        InlineKeyboardButton(text=confirm_text, callback_data=f"warehouse_confirm_conn_{order_id}")
+    ])
+
+    # Back row
+    back_text = "🔙 Orqaga" if lang == "uz" else "🔙 Назад"
+    keyboard.append([InlineKeyboardButton(
+        text=back_text,
+        callback_data="warehouse_inbox_back_to_categories"
+    )])
+
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_technician_inbox_controls(
+    current_index: int,
+    total_count: int,
+    order_id: int,
+    lang: str = "uz"
+) -> InlineKeyboardMarkup:
+    """
+    Technician inbox uchun navigatsiya + Tasdiqlash tugmasi.
+    """
+    keyboard = []
+
+    # Navigation buttons
+    nav_row = []
+    if current_index > 0:
+        nav_row.append(InlineKeyboardButton(
+            text="⬅️",
+            callback_data=f"warehouse_prev_inbox_{current_index-1}"
+        ))
+    nav_row.append(InlineKeyboardButton(
+        text=f"{current_index + 1}/{total_count}",
+        callback_data="warehouse_page_info"
+    ))
+    if current_index < total_count - 1:
+        nav_row.append(InlineKeyboardButton(
+            text="➡️",
+            callback_data=f"warehouse_next_inbox_{current_index+1}"
+        ))
+    if nav_row:
+        keyboard.append(nav_row)
+
+    # Confirm button with unique callback pattern
+    confirm_text = "✅ Tasdiqlash" if lang == "uz" else "✅ Подтвердить"
+    keyboard.append([
+        InlineKeyboardButton(text=confirm_text, callback_data=f"warehouse_confirm_tech_{order_id}")
+    ])
+
+    # Back button
+    back_text = "🔙 Orqaga" if lang == "uz" else "🔙 Назад"
+    keyboard.append([InlineKeyboardButton(
+        text=back_text,
+        callback_data="warehouse_inbox_back_to_categories"
+    )])
+
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_staff_inbox_controls(
+    current_index: int,
+    total_count: int,
+    order_id: int,
+    lang: str = "uz"
+) -> InlineKeyboardMarkup:
+    """
+    Staff inbox uchun navigatsiya + Tasdiqlash tugmasi.
+    """
+    keyboard = []
+
+    # Navigation buttons
+    nav_row = []
+    if current_index > 0:
+        nav_row.append(InlineKeyboardButton(
+            text="⬅️",
+            callback_data=f"warehouse_prev_inbox_{current_index-1}"
+        ))
+    nav_row.append(InlineKeyboardButton(
+        text=f"{current_index + 1}/{total_count}",
+        callback_data="warehouse_page_info"
+    ))
+    if current_index < total_count - 1:
+        nav_row.append(InlineKeyboardButton(
+            text="➡️",
+            callback_data=f"warehouse_next_inbox_{current_index+1}"
+        ))
+    if nav_row:
+        keyboard.append(nav_row)
+
+    # Confirm button with unique callback pattern
+    confirm_text = "✅ Tasdiqlash" if lang == "uz" else "✅ Подтвердить"
+    keyboard.append([
+        InlineKeyboardButton(text=confirm_text, callback_data=f"warehouse_confirm_staff_{order_id}")
+    ])
+
+    # Back button
+    back_text = "🔙 Orqaga" if lang == "uz" else "🔙 Назад"
+    keyboard.append([InlineKeyboardButton(
+        text=back_text,
+        callback_data="warehouse_inbox_back_to_categories"
+    )])
+
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def get_warehouse_material_requests_navigation_keyboard(
     current_index: int, 
