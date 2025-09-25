@@ -183,11 +183,14 @@ async def confirm_materials_and_update_status_for_connection(order_id: int, acto
                     """
                     INSERT INTO material_and_technician (user_id, material_id, quantity)
                     VALUES ($1, $2, $3)
+                    ON CONFLICT (user_id, material_id) 
+                    DO UPDATE SET quantity = material_and_technician.quantity + EXCLUDED.quantity
                     """,
                     actor_user_id, int(r["material_id"]), int(r["quantity"]) or 0
                 )
 
             updated = await conn.execute(
+
                 """
                 UPDATE connection_orders
                 SET status = 'between_controller_technician'
@@ -201,14 +204,6 @@ async def confirm_materials_and_update_status_for_connection(order_id: int, acto
 
 
 async def confirm_materials_and_update_status_for_technician(order_id: int, actor_user_id: int) -> bool:
-    """
-    Texnik xizmat arizalari uchun materiallarni tasdiqlaydi
-    va technician_orders.status ni 'in_progress' ga o'zgartiradi.
-    
-    Args:
-        order_id: The ID of the technician order
-        actor_user_id: The ID of the user confirming the materials (required)
-    """
     if not actor_user_id:
         raise ValueError("actor_user_id is required")
         
@@ -233,7 +228,7 @@ async def confirm_materials_and_update_status_for_technician(order_id: int, acto
 async def confirm_materials_and_update_status_for_staff(order_id: int, actor_user_id: int) -> bool:
     """
     Xodim arizalari uchun materiallarni tasdiqlaydi
-    va staff_orders.status ni 'completed' ga o'zgartiradi.
+    va saff_orders.status ni 'completed' ga ozgartiradi.
     
     Args:
         order_id: The ID of the staff order
@@ -247,7 +242,7 @@ async def confirm_materials_and_update_status_for_staff(order_id: int, actor_use
         async with conn.transaction():
             # First, check if the order exists and is in the correct status
             order = await conn.fetchrow(
-                "SELECT id FROM staff_orders WHERE id = $1 AND status = 'in_warehouse'",
+                "SELECT id FROM saff_orders WHERE id = $1 AND status = 'in_warehouse'",
                 order_id
             )
             
@@ -257,7 +252,7 @@ async def confirm_materials_and_update_status_for_staff(order_id: int, actor_use
             # Update the status to completed
             result = await conn.execute(
                 """
-                UPDATE staff_orders
+                UPDATE saff_orders
                 SET status = 'completed',
                     warehouse_user_id = $1,
                     updated_at = NOW()
@@ -339,7 +334,7 @@ async def count_warehouse_technician_orders() -> int:
 
 # ==================== STAFF ORDERS (SAFF_ORDERS) ====================
 
-async def fetch_warehouse_staff_orders(
+async def fetch_warehouse_saff_orders(
     limit: int = 50,
     offset: int = 0
 ) -> List[Dict[str, Any]]:
@@ -380,7 +375,7 @@ async def fetch_warehouse_staff_orders(
         await conn.close()
 
 
-async def count_warehouse_staff_orders() -> int:
+async def count_warehouse_saff_orders() -> int:
     """
     Omborda turgan xodim arizalari soni
     """
@@ -407,19 +402,19 @@ async def get_all_warehouse_orders_count() -> Dict[str, int]:
     """
     connection_count = await count_warehouse_connection_orders()
     technician_count = await count_warehouse_technician_orders()
-    staff_count = await count_warehouse_staff_orders()
+    staff_count = await count_warehouse_saff_orders()
     
     return {
         "connection_orders": connection_count,
         "technician_orders": technician_count,
-        "staff_orders": staff_count,
+        "saff_orders": staff_count,
         "total": connection_count + technician_count + staff_count
     }
 
 
 async def get_warehouse_order_by_id_and_type(order_id: int, order_type: str) -> Optional[Dict[str, Any]]:
     """
-    ID va tur bo'yicha bitta arizani olish
+    ID va tur boyicha bitta arizani olish
     order_type: 'connection', 'technician', 'staff'
     """
     conn = await _conn()
@@ -577,7 +572,7 @@ async def fetch_material_requests_by_technician_orders(
         await conn.close()
 
 
-async def fetch_material_requests_by_staff_orders(
+async def fetch_material_requests_by_saff_orders(
     limit: int = 50,
     offset: int = 0
 ) -> List[Dict[str, Any]]:
@@ -657,7 +652,7 @@ async def count_material_requests_by_technician_orders() -> int:
         await conn.close()
 
 
-async def count_material_requests_by_staff_orders() -> int:
+async def count_material_requests_by_saff_orders() -> int:
     """
     Xodim arizalariga bog'langan material so'rovlari soni
     """
@@ -678,15 +673,15 @@ async def count_material_requests_by_staff_orders() -> int:
 
 async def get_all_material_requests_count() -> Dict[str, int]:
     """
-    Barcha material so'rovlari sonini qaytaradi
+    Barcha material sorovlari sonini qaytaradi
     """
     connection_count = await count_material_requests_by_connection_orders()
     technician_count = await count_material_requests_by_technician_orders()
-    staff_count = await count_material_requests_by_staff_orders()
+    staff_count = await count_material_requests_by_saff_orders()
     
     return {
         "connection_orders": connection_count,
         "technician_orders": technician_count,
-        "staff_orders": staff_count,
+        "saff_orders": staff_count,
         "total": connection_count + technician_count + staff_count
     }

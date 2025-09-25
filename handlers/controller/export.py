@@ -7,7 +7,6 @@ from database.controller_export import (
     get_controller_tech_requests_for_export,
     get_controller_statistics_for_export,
     get_controller_employees_for_export,
-    get_controller_reports_for_export,
     get_controller_connection_orders_for_export
 )
 from utils.export_utils import ExportUtils
@@ -87,22 +86,6 @@ async def export_employees_handler(callback: CallbackQuery, state: FSMContext):
         logger.error(f"Export employees handler error: {e}")
         await callback.answer("❌ Xatolik yuz berdi", show_alert=True)
 
-@router.callback_query(F.data == "controller_export_reports")
-async def export_reports_handler(callback: CallbackQuery, state: FSMContext):
-    """Handle reports export selection"""
-    try:
-        await state.update_data(export_type="reports")
-        keyboard = get_controller_export_formats_keyboard()
-        await callback.message.edit_text(
-            "📈 <b>Hisobotlar</b>\n\n"
-            "Export formatini tanlang:",
-            reply_markup=keyboard,
-            parse_mode="HTML"
-        )
-        await callback.answer()
-    except Exception as e:
-        logger.error(f"Export reports handler error: {e}")
-        await callback.answer("❌ Xatolik yuz berdi", show_alert=True)
 
 @router.callback_query(F.data.startswith("controller_format_"))
 async def export_format_handler(callback: CallbackQuery, state: FSMContext):
@@ -218,12 +201,23 @@ async def export_format_handler(callback: CallbackQuery, state: FSMContext):
             headers = ["Ko'rsatkich", "Qiymat"]
             
         elif export_type == "employees":
-            raw_data = await get_controller_employees_for_export()
+            employees = await get_controller_employees_for_export()
             title = "Xodimlar ro'yxati"
             filename_base = "xodimlar"
             headers = [
                 "Ism-sharif", "Telefon", "Lavozim",
                 "Qo'shilgan sana"
+            ]
+            
+            # Convert the list of dicts to the format expected by the export functions
+            raw_data = [
+                [
+                    emp.get("Ism-sharif", ""),
+                    emp.get("Telefon", ""),
+                    emp.get("Lavozim", ""),
+                    emp.get("Qo'shilgan sana", "")
+                ]
+                for emp in employees
             ]
             
         elif export_type == "reports":
@@ -236,16 +230,27 @@ async def export_format_handler(callback: CallbackQuery, state: FSMContext):
             ]
         
         # Generate file based on format
-        if format_type == "xlsx":
-            file = await generate_excel(raw_data, headers, title, filename_base)
-        elif format_type == "csv":
-            file = await generate_csv(raw_data, headers, title, filename_base)
-        elif format_type == "docx":
-            file = await generate_word(raw_data, headers, title, filename_base)
-        elif format_type == "pdf":
-            file = await generate_pdf(raw_data, headers, title, filename_base)
-        else:
-            raise ValueError("Noto'g'ri format tanlandi")
+        try:
+            if format_type == "xlsx":
+                file = await generate_excel(raw_data, headers, title, filename_base)
+            elif format_type == "csv":
+                file = await generate_csv(raw_data, headers, title, filename_base)
+            elif format_type == "docx":
+                # For Word export, ensure data is in the correct format
+                if export_type in ["employees", "reports"]:
+                    # For these types, raw_data is already a list of dicts
+                    file = await generate_word(raw_data, headers, title, filename_base)
+                else:
+                    # For other types, convert to list of dicts
+                    dict_data = _rows_to_dicts(raw_data, headers)
+                    file = await generate_word(dict_data, headers, title, filename_base)
+            elif format_type == "pdf":
+                file = await generate_pdf(raw_data, headers, title, filename_base)
+            else:
+                raise ValueError("Noto'g'ri format tanlandi")
+        except Exception as e:
+            logger.error(f"Error generating {format_type.upper()} file: {str(e)}", exc_info=True)
+            raise ValueError(f"{format_type.upper()} faylini yaratishda xatolik: {str(e)}")
         
         # Send the file
         await callback.message.answer_document(
@@ -304,16 +309,32 @@ def _rows_to_dicts(data: list, headers: list) -> list[dict]:
         for row in data:
             row_dict = {}
             for header in headers:
-                row_dict[header] = row.get(_get_db_key_for_header(header), "")
+                # Try direct key access first, then try with header mapping
+                value = row.get(header) or row.get(_get_db_key_for_header(header), "")
+                row_dict[header] = str(value) if value is not None else ""
             dict_data.append(row_dict)
         return dict_data
 
-    # Otherwise (list of lists), map by index
+    # Handle list of lists/tuples
     for row in data:
-        row_dict = {}
-        for i, header in enumerate(headers):
-            row_dict[header] = row[i] if i < len(row) else ""
+        if not isinstance(row, (list, tuple, dict)):
+            # Single value case
+            row_dict = {headers[0]: str(row) if row is not None else ""}
+            # Add empty values for remaining headers
+            for header in headers[1:]:
+                row_dict[header] = ""
+        else:
+            # List/tuple case
+            row_dict = {}
+            for i, header in enumerate(headers):
+                if i < len(row):
+                    value = row[i]
+                    row_dict[header] = str(value) if value is not None else ""
+                else:
+                    row_dict[header] = ""
+        
         dict_data.append(row_dict)
+    
     return dict_data
 
 

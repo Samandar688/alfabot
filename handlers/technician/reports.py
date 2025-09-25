@@ -2,7 +2,28 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
+import datetime as dt
+
+def _get_tashkent_tz():
+    """Xavfsiz vaqt mintaqasi olish funksiyasi.
+    Avval zoneinfo orqali urinib ko'radi, keyin pytz orqali, oxirida UTC+5 qaytaradi.
+    """
+    # 1. Try zoneinfo with Asia/Tashkent
+    try:
+        from zoneinfo import ZoneInfo
+        return ZoneInfo("Asia/Tashkent")
+    except Exception:
+        pass
+    
+    # 2. Try pytz if available
+    try:
+        import pytz
+        return pytz.timezone('Asia/Tashkent')
+    except ImportError:
+        pass
+    
+    # 3. Fallback to UTC+5 (Tashkent time) using datetime.timezone
+    return dt.timezone(dt.timedelta(hours=5), 'Asia/Tashkent')
 
 from database.queries import find_user_by_telegram_id
 from database.technician_report_queries import (
@@ -53,7 +74,7 @@ def _block(title: str, stats: dict, lang: str) -> str:
     return "\n".join(lines)
 
 # --- Davr filtri ---
-ASIA_TASHKENT = ZoneInfo("Asia/Tashkent")
+ASIA_TASHKENT = _get_tashkent_tz()
 
 def _make_period(key: str):
     """

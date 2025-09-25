@@ -8,7 +8,6 @@ def get_controller_main_menu(lang: str = 'uz') -> ReplyKeyboardMarkup:
         keyboard = [
             [KeyboardButton(text="📥 Входящие"), KeyboardButton(text="📋 Просмотр заявок")],
             [KeyboardButton(text="🔌 Создать заявку на подключение"), KeyboardButton(text="🔧 Создать техническую заявку")],
-            [KeyboardButton(text="🕐 Мониторинг в реальном времени"), KeyboardButton(text="📊 Мониторинг")],
             [KeyboardButton(text="👥 Активность сотрудников"), KeyboardButton(text="📤 Экспорт")],
             [KeyboardButton(text="🌐 Изменить язык")]
         ]
@@ -16,7 +15,6 @@ def get_controller_main_menu(lang: str = 'uz') -> ReplyKeyboardMarkup:
         keyboard = [
             [KeyboardButton(text="📥 Inbox"), KeyboardButton(text="📋 Arizalarni ko'rish")],
             [KeyboardButton(text="🔌 Ulanish arizasi yaratish"), KeyboardButton(text="🔧 Texnik xizmat yaratish")],
-            [KeyboardButton(text="🕐 Real vaqtda kuzatish"), KeyboardButton(text="📊 Monitoring")],
             [KeyboardButton(text="👥 Xodimlar faoliyati"), KeyboardButton(text="📤 Export")],
             [KeyboardButton(text="🌐 Tilni o'zgartirish")]
         ]
@@ -32,7 +30,6 @@ def get_controller_export_types_keyboard(lang: str = 'uz') -> InlineKeyboardMark
             [InlineKeyboardButton(text="📋 Техн. заявки", callback_data="controller_export_tech_requests")],
             [InlineKeyboardButton(text="📊 Статистика", callback_data="controller_export_statistics")],
             [InlineKeyboardButton(text="👥 Сотрудники", callback_data="controller_export_employees")],
-            [InlineKeyboardButton(text="📈 Отчеты", callback_data="controller_export_reports")],
             [InlineKeyboardButton(text="🚫 Выход", callback_data="controller_export_end")],
         ]
     else:
@@ -40,7 +37,6 @@ def get_controller_export_types_keyboard(lang: str = 'uz') -> InlineKeyboardMark
             [InlineKeyboardButton(text="📋 Texnik arizalar", callback_data="controller_export_tech_requests")],
             [InlineKeyboardButton(text="📊 Statistika", callback_data="controller_export_statistics")],
             [InlineKeyboardButton(text="👥 Xodimlar", callback_data="controller_export_employees")],
-            [InlineKeyboardButton(text="📈 Hisobotlar", callback_data="controller_export_reports")],
             [InlineKeyboardButton(text="🚫 Yopish", callback_data="controller_export_end")],
         ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)

@@ -107,10 +107,7 @@ async def inventory_statistics_handler(message: Message):
             f"• Umumiy qiymat: <b>{format_currency(stats['total_value'])}</b>\n"
             f"• O'rtacha qiymat: <b>{format_currency(stats['total_value'] / max(stats['total_materials'], 1))}</b>/tur"
         )
-        await message.answer(
-            text,
-            parse_mode="HTML"
-        )
+        await message.answer(text, parse_mode="HTML")
     except Exception:
         await message.answer("❌ Inventarizatsiya statistikasini yuklashda xatolik yuz berdi.")
 
@@ -181,8 +178,10 @@ async def range_stats_start(message: Message, state: FSMContext):
         reply_markup=get_stats_period_keyboard("uz"),
     )
 
-@router.message(StateFilter(StatsStates.waiting_range),
-                F.text.in_(["🔙 Orqaga", "◀️ Orqaga", "🔙 Назад", "◀️ Назад"]))
+@router.message(
+    StateFilter(StatsStates.waiting_range),
+    F.text.in_(["🔙 Orqaga", "◀️ Orqaga", "🔙 Назад", "◀️ Назад"])
+)
 async def range_back(message: Message, state: FSMContext):
     await state.clear()
     await message.answer("🏠 Asosiy menyu", reply_markup=get_warehouse_main_menu("uz"))
@@ -317,7 +316,7 @@ async def daily_stats_callback(callback: CallbackQuery):
         )
         await callback.message.edit_text(
             text,
-            reply_markup=get_warehouse_statistics_inline_keyboard(),
+            reply_markup=get_warehouse_statistics_keyboard("uz"),
             parse_mode="HTML"
         )
     except Exception:

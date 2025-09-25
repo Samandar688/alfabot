@@ -29,4 +29,4 @@ class MaterialRequestsStates(StatesGroup):
     main_menu = State()  # Material requests asosiy menusi
     connection_orders = State()  # Ulanish arizalari materiallari
     technician_orders = State()  # Texnik xizmat materiallari
-    staff_orders = State()  # Xodim arizalari materiallari
+    saff_orders = State()  # Xodim arizalari materiallari
