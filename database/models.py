@@ -62,6 +62,7 @@ class ConnectionApplication(BaseModel):
             "in_controller": "Controller Assigned",
             "between_controller_technician": "Between Controller and Technician role",
             "in_technician": "Technician Assigned",
+            "in_warehouse": "Warehouse Assigned",
             "in_technician_work": "Technician Working",
             "completed": "Completed",
         }
@@ -86,6 +87,7 @@ class TechnicianApplication(BaseModel):
             "between_controller_technician": "Between Controller and Technician role",
             "in_technician": "Technician Assigned",
             "in_technician_work": "Technician Working",
+            "in_warehouse": "Warehouse Assigned",
             "in_call_center_supervisor": "Call Center Supervisor Assigned",
             "in_call_center_operator": "Call Center Operator Assigned",
             "completed": "Completed",
@@ -110,7 +112,10 @@ class SaffApplication(BaseModel):
             "in_call_center_supervisor": "Call Center Supervisor Assigned",
             "in_controller": "Controller Assigned",
             "in_technician": "Technician Assigned",
+            "in_between_controller_technician": "Between Controller and Technician role",
             "in_technician_work": "Technician Working",
+            "in_warehouse": "Warehouse Assigned",
+            "in_call_center_operator": "Call Center Operator Assigned",
             "completed": "Completed",
         }
     )
