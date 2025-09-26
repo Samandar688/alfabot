@@ -5,12 +5,38 @@ from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import StateFilter
 from aiogram.fsm.state import State, StatesGroup
+from database.queries import find_user_by_telegram_id
+
+
+async def get_current_status(application_id: int, mode: str = "connection") -> str:
+    """Get current status of an application"""
+    from database.technician_queries import _conn
+    conn = None
+    try:
+        conn = await _conn()
+        if mode == "technician":
+            query = """
+                SELECT status FROM technician_orders 
+                WHERE id = $1
+            """
+        else:  # connection mode
+            query = """
+                SELECT status FROM connection_orders 
+                WHERE id = $1
+            """
+        result = await conn.fetchval(query, application_id)
+        return result or "noma'lum"
+    except Exception as e:
+        print(f"Error getting status: {e}")
+        return "noma'lum"
+    finally:
+        if conn:
+            await conn.close()
 
 from datetime import datetime
 import html
 
 from filters.role_filter import RoleFilter
-from database.queries import find_user_by_telegram_id
 from database.technician_queries import (
     # Ulanish (connection_orders) oqimi
     fetch_technician_inbox,
@@ -19,8 +45,8 @@ from database.technician_queries import (
     start_technician_work,
     finish_technician_work,
     fetch_selected_materials_for_request,
-    fetch_technician_materials,                         # NEW
-    create_material_request_and_mark_in_warehouse,  # NEW
+    fetch_technician_materials,
+    create_material_request_and_mark_in_warehouse,
 
     # Material oqimi (ikkala rejimda ham ishlatiladi)
     fetch_technician_materials,
@@ -507,7 +533,6 @@ async def tech_cancel(cb: CallbackQuery, state: FSMContext):
 
     await state.update_data(tech_inbox=items, tech_idx=idx)
     total = len(items); item = items[idx]
-    await cb.answer(t("ok_cancelled", lang))
     text = short_view_text(item, idx, total, lang)
     kb = action_keyboard(item.get("id"), idx, total, item.get("status", ""), mode=mode, lang=lang)
     await _safe_edit(cb.message, text, kb)
@@ -526,7 +551,11 @@ async def tech_start(cb: CallbackQuery, state: FSMContext):
         else:
             ok = await start_technician_work(applications_id=req_id, technician_id=user["id"])
         if not ok:
-            return await cb.answer(t("status_mismatch_detail", lang), show_alert=True)
+            current_status = await get_current_status(req_id, mode)
+            error_msg = f"⚠️ Xatolik! Avval 'Qabul qilish' tugmasini bosing.\n\n"
+            error_msg += f"Joriy holat: {current_status or 'noma\'lum'}\n"
+            error_msg += "Kerakli holat: in_technician"
+            return await cb.answer(error_msg, show_alert=True)
     except Exception as e:
         return await cb.answer(f"{t('x_error', lang)} {e}", show_alert=True)
 
@@ -555,7 +584,7 @@ async def tech_start(cb: CallbackQuery, state: FSMContext):
         await cb.answer(t("ok_started", lang))
         return
 
-    mats = await fetch_technician_materials(user_id=user["id"])
+    mats = await fetch_technician_materials()
     header_text = t("store_header", lang, id=req_id)
     await cb.message.answer(header_text, reply_markup=materials_keyboard(mats, applications_id=req_id, lang=lang), parse_mode="HTML")
 
@@ -622,7 +651,7 @@ async def tech_diag_go_store(cb: CallbackQuery, state: FSMContext):
     if not user or user.get("role") != "technician":
         return await cb.answer(t("no_perm", lang), show_alert=True)
 
-    mats = await fetch_technician_materials(user_id=user["id"])
+    mats = await fetch_technician_materials()
     header_text = t("store_header", lang, id=req_id)
     await cb.message.answer(header_text, reply_markup=materials_keyboard(mats, applications_id=req_id, lang=lang), parse_mode="HTML")
 
@@ -693,7 +722,7 @@ async def tech_qty_cancel(cb: CallbackQuery, state: FSMContext):
     if not user or user.get("role") != "technician":
         return await cb.answer(t("no_perm", lang), show_alert=True)
 
-    mats = await fetch_technician_materials(user_id=user["id"])
+    mats = await fetch_technician_materials()
     header_text = t("store_header", lang, id=req_id)
     await cb.message.answer(header_text, reply_markup=materials_keyboard(mats, applications_id=req_id, lang=lang), parse_mode="HTML")
     await _preserve_mode_clear(state)
@@ -758,7 +787,7 @@ async def tech_back_to_materials(cb: CallbackQuery, state: FSMContext):
     if not user or user.get("role") != "technician":
         return await cb.answer(t("no_perm", lang), show_alert=True)
 
-    mats = await fetch_technician_materials(user_id=user["id"])
+    mats = await fetch_technician_materials()
     header_text = t("store_header", lang, id=req_id)
     await cb.message.answer(header_text, reply_markup=materials_keyboard(mats, applications_id=req_id, lang=lang), parse_mode="HTML")
     await cb.answer()
@@ -819,7 +848,7 @@ async def tech_add_more(cb: CallbackQuery, state: FSMContext):
     if not user or user.get("role") != "technician":
         return await cb.answer(t("no_perm", lang), show_alert=True)
 
-    mats = await fetch_technician_materials(user_id=user["id"])
+    mats = await fetch_technician_materials()
     header_text = t("store_header", lang, id=req_id)
     await cb.message.answer(header_text, reply_markup=materials_keyboard(mats, applications_id=req_id, lang=lang), parse_mode="HTML")
     await cb.answer()

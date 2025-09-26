@@ -101,10 +101,10 @@ async def ccs_send_to_control(order_id: int, supervisor_id: Optional[int] = None
             updated = await conn.execute(
                 """
                 UPDATE saff_orders
-                   SET status    = $2::connection_order_status,
+                   SET status    = $2::saff_order_status,
                        updated_at = NOW()
                  WHERE id = $1
-                   AND status <> $2::connection_order_status
+                   AND status <> $2::saff_order_status
                 """,
                 order_id, STATUS_IN_CONTROLLER,
             )
@@ -113,7 +113,7 @@ async def ccs_send_to_control(order_id: int, supervisor_id: Optional[int] = None
 
             # O'zgarmagan bo'lsa: mavjudligini va statusni tekshiramiz
             exists = await conn.fetchval(
-                "SELECT 1 FROM saff_orders WHERE id = $1 AND status = $2::connection_order_status",
+                "SELECT 1 FROM saff_orders WHERE id = $1 AND status = $2::saff_order_status",
                 order_id, STATUS_IN_CONTROLLER
             )
             return bool(exists)
@@ -244,7 +244,7 @@ async def saff_orders_create(
                     description, type_of_zayavka, status, is_active, created_at, updated_at
                 )
                 VALUES ($1, $2, $3, $4, $5, $6,
-                        '', 'connection', $7::connection_order_status, TRUE, NOW(), NOW())
+                        '', 'connection', $7::saff_order_status, TRUE, NOW(), NOW())
                 RETURNING id
                 """,
                 user_id, phone, abonent_id, region, address, tarif_id, DEFAULT_STATUS_ON_CREATE
@@ -277,7 +277,7 @@ async def saff_orders_technician_create(
                     status, type_of_zayavka, is_active, created_at, updated_at
                 )
                 VALUES ($1, $2, $3, $4, $5, $6,
-                        $7::connection_order_status, 'technician', TRUE, NOW(), NOW())
+                        $7::saff_order_status, 'technician', TRUE, NOW(), NOW())
                 RETURNING id
                 """,
                 user_id,

@@ -295,28 +295,22 @@ async def finish_technician_work(applications_id: int,
 
 
 # ======================= MATERIALLAR (SELECTION) =======================
-async def fetch_technician_materials(user_id: int) -> List[Dict[str, Any]]:
+async def fetch_technician_materials(limit: int = 50, offset: int = 0):
     conn = await _conn()
     try:
         rows = await conn.fetch(
             """
-            SELECT
-              m.id          AS material_id,
-              m.name,
-              m.price,
-              m.serial_number,
-              t.quantity    AS stock_quantity
-            FROM material_and_technician t
-            JOIN materials m ON m.id = t.material_id
-            WHERE t.user_id = $1
-              AND t.quantity > 0
-            ORDER BY m.name
+            SELECT id, name, quantity, price
+            FROM materials
+            ORDER BY id
+            LIMIT $1 OFFSET $2
             """,
-            user_id
+            limit, offset
         )
-        return _as_dicts(rows)
+        return [dict(r) for r in rows]
     finally:
         await conn.close()
+
 
 
 async def fetch_all_materials(limit: int = 200, offset: int = 0) -> list[dict]:
