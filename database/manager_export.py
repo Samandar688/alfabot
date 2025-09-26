@@ -196,27 +196,3 @@ async def get_manager_employees_for_export() -> List[Dict[str, Any]]:
         return []
     finally:
         await conn.close()
-
-async def get_manager_reports_for_export() -> List[Dict[str, Any]]:
-    """Fetch reports for manager export"""
-    conn = await asyncpg.connect(settings.DB_URL)
-    try:
-        query = """
-        SELECT 
-            r.id,
-            r.title,
-            r.description,
-            u.full_name as created_by,
-            r.created_at,
-            r.updated_at
-        FROM reports r
-        LEFT JOIN users u ON r.created_by = u.telegram_id
-        ORDER BY r.created_at DESC
-        """
-        rows = await conn.fetch(query)
-        return [dict(row) for row in rows]
-    except Exception as e:
-        logger.error(f"Error fetching reports for export: {e}")
-        return []
-    finally:
-        await conn.close()

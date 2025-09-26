@@ -11,8 +11,7 @@ from database.call_center_supervisor_export import (
     get_ccs_connection_orders_for_export,
     get_ccs_operator_orders_for_export,
     get_ccs_operators_for_export,
-    get_ccs_statistics_for_export,
-    get_ccs_reports_for_export
+    get_ccs_statistics_for_export
 )
 from utils.export_utils import ExportUtils
 from database.language_queries import get_user_language
@@ -68,16 +67,6 @@ async def export_statistics(cb: CallbackQuery, state: FSMContext):
     )
     await cb.answer()
 
-@router.callback_query(F.data == "ccs_export_reports")
-async def export_reports(cb: CallbackQuery, state: FSMContext):
-    await state.update_data(export_type="reports")
-    lang = await get_user_language(cb.from_user.id) or "uz"
-    await cb.message.edit_text(
-        ("📄 <b>Hisobotlar</b>\n\nFormatni tanlang:" if lang == "uz" else "📄 <b>Отчеты</b>\n\nВыберите формат:"),
-        reply_markup=get_ccs_export_formats_keyboard(lang),
-        parse_mode="HTML",
-    )
-    await cb.answer()
 
 @router.callback_query(F.data.startswith("ccs_format_"))
 async def export_format_handler(cb: CallbackQuery, state: FSMContext):
@@ -110,9 +99,6 @@ async def export_format_handler(cb: CallbackQuery, state: FSMContext):
         elif export_type == "statistics":
             data_rows = await get_ccs_statistics_for_export()
             filename_prefix = "statistics"
-        elif export_type == "reports":
-            data_rows = await get_ccs_reports_for_export()
-            filename_prefix = "reports"
         
         if not data_rows:
             no_data_text = ("❌ <b>Ma'lumot topilmadi</b>\n\nTanlangan bo'lim bo'yicha hech qanday ma'lumot mavjud emas." if lang == "uz" else "❌ <b>Данные не найдены</b>\n\nПо выбранному разделу нет доступных данных.")
@@ -124,7 +110,20 @@ async def export_format_handler(cb: CallbackQuery, state: FSMContext):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"ccs_{filename_prefix}_{timestamp}.{format_type}"
         
-        file_content = await ExportUtils.generate_export(data_rows, format_type)
+        # Create ExportUtils instance and generate file
+        export_utils = ExportUtils()
+        if export_type == "statistics":
+            # For statistics, convert list to dict format expected by generate_statistics_export
+            stats_dict = {}
+            if data_rows:
+                for item in data_rows:
+                    if 'total_orders' in item:
+                        stats_dict = item
+                        break
+            file_content = export_utils.generate_statistics_export(stats_dict, format_type, f"Call Center Supervisor {export_type.title()}")
+        else:
+            # For other types, use generate_orders_export
+            file_content = export_utils.generate_orders_export(data_rows, format_type, f"Call Center Supervisor {export_type.title()}")
         
         if file_content:
             file = BufferedInputFile(file_content, filename=filename)

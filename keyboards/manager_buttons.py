@@ -7,7 +7,7 @@ def get_manager_main_menu(lang: str = "uz") -> ReplyKeyboardMarkup:
         keyboard = [
             [KeyboardButton(text="📥 Inbox"), KeyboardButton(text="📋 Arizalarni ko'rish")],
             [KeyboardButton(text="🔌 Ulanish arizasi yaratish"), KeyboardButton(text="🔧 Texnik xizmat yaratish")],
-            [KeyboardButton(text="🛜 SmartService arizalari")],
+            [KeyboardButton(text="🛜 SmartService arizalari"), KeyboardButton(text="📤 Export")],
             # 📊 Monitoring va 🔄 Status o'zgartirish OLIB TASHLANDI
             [KeyboardButton(text="🕐 Real vaqtda kuzatish"), KeyboardButton(text="👥 Xodimlar faoliyati")],
             [KeyboardButton(text="🌐 Tilni o'zgartirish")],
@@ -16,7 +16,7 @@ def get_manager_main_menu(lang: str = "uz") -> ReplyKeyboardMarkup:
         keyboard = [
             [KeyboardButton(text="📥 Входящие"), KeyboardButton(text="📋 Все заявки")],
             [KeyboardButton(text="🔌 Создать заявку на подключение"), KeyboardButton(text="🔧 Создать заявку на тех. обслуживание")],
-            [KeyboardButton(text="🛜 SmartService заявки")],
+            [KeyboardButton(text="🛜 SmartService заявки"), KeyboardButton(text="📤 Экспорт")],
             # 📊 Мониторинг и 🔄 Изменить статус УДАЛЕНЫ
             [KeyboardButton(text="🕐 Мониторинг в реальном времени"), KeyboardButton(text="👥 Активность сотрудников")],
             [KeyboardButton(text="🌐 Изменить язык")],
@@ -95,7 +95,6 @@ def get_manager_export_types_keyboard(lang: str = 'uz') -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="📋 Arizalar", callback_data="manager_export_orders")],
             [InlineKeyboardButton(text="📊 Statistika", callback_data="manager_export_statistics")],
             [InlineKeyboardButton(text="👥 Xodimlar", callback_data="manager_export_employees")],
-            [InlineKeyboardButton(text="📈 Hisobotlar", callback_data="manager_export_reports")],
             [InlineKeyboardButton(text="🚫 Yopish", callback_data="manager_export_end")]
         ]
     else:
@@ -103,7 +102,6 @@ def get_manager_export_types_keyboard(lang: str = 'uz') -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="📋 Заказы", callback_data="manager_export_orders")],
             [InlineKeyboardButton(text="📊 Статистика", callback_data="manager_export_statistics")],
             [InlineKeyboardButton(text="👥 Сотрудники", callback_data="manager_export_employees")],
-            [InlineKeyboardButton(text="📈 Отчеты", callback_data="manager_export_reports")],
             [InlineKeyboardButton(text="🚫 Выход", callback_data="manager_export_end")]
         ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)

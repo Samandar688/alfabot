@@ -5,8 +5,7 @@ from keyboards.manager_buttons import get_manager_export_types_keyboard, get_man
 from database.manager_export import (
     get_manager_connection_orders_for_export,
     get_manager_statistics_for_export,
-    get_manager_employees_for_export,
-    get_manager_reports_for_export
+    get_manager_employees_for_export
 )
 from utils.export_utils import ExportUtils
 from states.manager_states import ManagerExportStates
@@ -85,22 +84,7 @@ async def export_employees_handler(callback: CallbackQuery, state: FSMContext):
         logger.error(f"Export employees handler error: {e}")
         await callback.answer("❌ Xatolik yuz berdi", show_alert=True)
 
-@router.callback_query(F.data == "manager_export_reports")
-async def export_reports_handler(callback: CallbackQuery, state: FSMContext):
-    """Handle reports export selection"""
-    try:
-        await state.update_data(export_type="reports")
-        keyboard = get_manager_export_formats_keyboard()
-        await callback.message.edit_text(
-            "📈 <b>Hisobotlar</b>\n\n"
-            "Export formatini tanlang:",
-            reply_markup=keyboard,
-            parse_mode="HTML"
-        )
-        await callback.answer()
-    except Exception as e:
-        logger.error(f"Export reports handler error: {e}")
-        await callback.answer("❌ Xatolik yuz berdi", show_alert=True)
+
 
 @router.callback_query(F.data.startswith("manager_format_"))
 async def export_format_handler(callback: CallbackQuery, state: FSMContext):
@@ -195,12 +179,6 @@ async def export_format_handler(callback: CallbackQuery, state: FSMContext):
             title = "Xodimlar ro'yxati"
             filename_base = "xodimlar"
             headers = ["ID", "Ism-sharif", "Telefon", "Lavozim", "Holati", "Qo'shilgan sana"]
-            
-        elif export_type == "reports":
-            raw_data = await get_manager_reports_for_export()
-            title = "Hisobotlar"
-            filename_base = "hisobotlar"
-            headers = ["ID", "Sarlavha", "Tavsif", "Yaratuvchi", "Yaratilgan sana", "Yangilangan sana"]
         
         else:
             await callback.message.answer("❌ Noto'g'ri hisobot turi")

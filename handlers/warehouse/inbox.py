@@ -256,7 +256,7 @@ async def navigate_prev(callback: CallbackQuery, state: FSMContext):
             mats = await fetch_materials_for_connection_order(orders[0].get('id'))
             mats_text = "\n".join([f"• {esc(m['material_name'])} — {esc(m['quantity'])} dona" for m in mats]) if mats else "—"
             text = format_connection_order(orders[0], new_index, total_count) + f"\n\n🧾 <b>Materiallar:</b>\n{mats_text}"
-            keyboard = get_connection_inbox_controls(new_index, total_count, orders[0].get('id'))
+            keyboard = get_technician_inbox_controls(new_index, total_count, orders[0].get('id'))
     elif current_order_type == "technician":
         orders = await fetch_warehouse_technician_orders(limit=1, offset=new_index)
         total_count = await count_warehouse_technician_orders()
@@ -357,7 +357,7 @@ async def confirm_connection_materials(callback: CallbackQuery, state: FSMContex
     except ValueError as e:
         return await callback.answer(f"❌ Xatolik: {str(e)}", show_alert=True)
     except Exception as e:
-        return await callback.answer("❌ Tasdiqlashda xato yuz berdi", show_alert=True)
+        return await callback.answer(f"❌ Tasdiqlashda xato yuz berdi: {str(e)}", show_alert=True)
     # After confirming, go back to list starting at current index
     data = await state.get_data()
     idx = int(data.get('current_index', 0))
@@ -372,7 +372,7 @@ async def confirm_connection_materials(callback: CallbackQuery, state: FSMContex
     mats = await fetch_materials_for_connection_order(order.get('id'))
     mats_text = "\n".join([f"• {esc(m['material_name'])} — {esc(m['quantity'])} dona" for m in mats]) if mats else "—"
     text = format_connection_order(order, idx, total_count) + f"\n\n🧾 <b>Materiallar:</b>\n{mats_text}"
-    keyboard = get_connection_inbox_controls(idx, total_count, order.get('id'))
+    keyboard = get_staff_inbox_controls(idx, total_count, order.get('id'))
     try:
         await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     except TelegramBadRequest:
@@ -400,7 +400,7 @@ async def confirm_technician_materials(callback: CallbackQuery, state: FSMContex
     except ValueError as e:
         return await callback.answer(f"❌ Xatolik: {str(e)}", show_alert=True)
     except Exception as e:
-        return await callback.answer("❌ Tasdiqlashda xato yuz berdi", show_alert=True)
+        return await callback.answer(f"❌ Tasdiqlashda xato yuz berdi: {str(e)}", show_alert=True)
     
     # After confirming, go back to list starting at current index
     data = await state.get_data()
@@ -445,7 +445,7 @@ async def confirm_staff_materials(callback: CallbackQuery, state: FSMContext):
     except ValueError as e:
         return await callback.answer(f"❌ Xatolik: {str(e)}", show_alert=True)
     except Exception as e:
-        return await callback.answer("❌ Tasdiqlashda xato yuz berdi", show_alert=True)
+        return await callback.answer(f"❌ Tasdiqlashda xato yuz berdi: {str(e)}", show_alert=True)
     
     # After confirming, go back to list starting at current index
     data = await state.get_data()

@@ -6,13 +6,14 @@ def get_warehouse_main_menu(lang: str = "uz") -> ReplyKeyboardMarkup:
     orders = "📋 Buyurtmalar" if lang == "uz" else "📋 Заказы"
     statistics = "📊 Statistikalar" if lang == "uz" else "📊 Статистика"
     technician_material_to_give = "📦 Teknik xodimga mahsulot berish" if lang == "uz" else "📦 Отдать материал технику"
+    technician_material_balance = "📦🔎 Teknikda qolgan mat." if lang == "uz" else "📦🔎 Остаток мат. у техника"
     export = "📤 Export" if lang == "uz" else "📤 Экспорт"
     change_lang = "🌐 Tilni o'zgartirish" if lang == "uz" else "🌐 Изменить язык"
 
     keyboard = [
         [KeyboardButton(text=inbox), KeyboardButton(text=inventory)],
         [KeyboardButton(text=orders), KeyboardButton(text=statistics)],
-        [KeyboardButton(text=technician_material_to_give)],
+        [KeyboardButton(text=technician_material_to_give), KeyboardButton(text=technician_material_balance)],
         [KeyboardButton(text=export), KeyboardButton(text=change_lang)],
     ]
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)

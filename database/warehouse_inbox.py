@@ -179,6 +179,10 @@ async def confirm_materials_and_update_status_for_connection(order_id: int, acto
                 order_id
             )
             for r in mats:
+                # Skip rows where material_id is NULL
+                if r["material_id"] is None:
+                    continue
+                    
                 await conn.execute(
                     """
                     INSERT INTO material_and_technician (user_id, material_id, quantity)
@@ -186,9 +190,9 @@ async def confirm_materials_and_update_status_for_connection(order_id: int, acto
                     ON CONFLICT (user_id, material_id) 
                     DO UPDATE SET quantity = material_and_technician.quantity + EXCLUDED.quantity
                     """,
-                    actor_user_id, int(r["material_id"]), int(r["quantity"]) or 0
+                    actor_user_id, int(r["material_id"]), int(r["quantity"] or 0)
                 )
-
+                
             updated = await conn.execute(
 
                 """

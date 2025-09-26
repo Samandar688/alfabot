@@ -4,16 +4,14 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 def get_call_center_supervisor_main_menu(lang: str = 'uz') -> ReplyKeyboardMarkup:
     if lang == 'ru':
         keyboard = [
-            [KeyboardButton(text="📥 Входящие")],
-            [KeyboardButton(text="👥 Активность сотрудников")],
+            [KeyboardButton(text="📥 Входящие"),KeyboardButton(text="👥 Активность сотрудников")],
             [KeyboardButton(text="🔌 Создать заявку на подключение"), KeyboardButton(text="🔧 Создать техническую заявку")],
             [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="📤 Экспорт")],
             [KeyboardButton(text="🌐 Изменить язык")],
         ]
     else:
         keyboard = [
-            [KeyboardButton(text="📥 Inbox")],
-            [KeyboardButton(text="👥 Xodimlar faoliyati")],
+            [KeyboardButton(text="📥 Inbox"),KeyboardButton(text="👥 Xodimlar faoliyati")],
             [KeyboardButton(text="🔌 Ulanish arizasi yaratish"), KeyboardButton(text="🔧 Texnik xizmat yaratish")],
             [KeyboardButton(text="📊 Statistikalar"), KeyboardButton(text="📤 Export")],
             [KeyboardButton(text="🌐 Tilni o'zgartirish")],
@@ -120,7 +118,6 @@ def get_ccs_export_types_keyboard(lang: str = "uz") -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(text="📊 Statistika", callback_data="ccs_export_statistics"),
-                InlineKeyboardButton(text="📈 Hisobotlar", callback_data="ccs_export_reports"),
             ],
             [InlineKeyboardButton(text="🚫 Yopish", callback_data="ccs_export_end")],
         ]
@@ -132,7 +129,6 @@ def get_ccs_export_types_keyboard(lang: str = "uz") -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(text="📊 Статистика", callback_data="ccs_export_statistics"),
-                InlineKeyboardButton(text="📈 Отчеты", callback_data="ccs_export_reports"),
             ],
             [InlineKeyboardButton(text="🚫 Закрыть", callback_data="ccs_export_end")],
         ]

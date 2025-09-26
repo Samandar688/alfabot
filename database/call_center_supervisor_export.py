@@ -136,9 +136,7 @@ async def get_ccs_statistics_for_export() -> Dict[str, Any]:
             COUNT(CASE WHEN co.status = 'in_manager' THEN 1 END) as new_orders,
             COUNT(CASE WHEN co.status = 'completed' THEN 1 END) as completed_orders
         FROM connection_orders co
-        LEFT JOIN users u ON co.assigned_operator_id = u.id
-        WHERE u.role = 'callcenter_operator' OR u.role IS NULL
-        AND co.created_at >= NOW() - INTERVAL '6 months'
+        WHERE co.created_at >= NOW() - INTERVAL '6 months'
         GROUP BY TO_CHAR(co.created_at, 'YYYY-MM')
         ORDER BY month DESC
         """
@@ -156,14 +154,14 @@ async def get_ccs_statistics_for_export() -> Dict[str, Any]:
         # 4. Statistics by tariff
         tariff_query = """
         SELECT 
-            co.tariff_name,
+            t.name as tariff_name,
             COUNT(*) as total_orders,
-            COUNT(DISTINCT co.client_phone) as unique_clients
+            COUNT(DISTINCT u.phone) as unique_clients
         FROM connection_orders co
-        LEFT JOIN users u ON co.assigned_operator_id = u.id
-        WHERE u.role = 'callcenter_operator' OR u.role IS NULL
-        AND co.tariff_name IS NOT NULL
-        GROUP BY co.tariff_name
+        LEFT JOIN tarif t ON co.tarif_id = t.id
+        LEFT JOIN users u ON co.user_id = u.id
+        WHERE t.name IS NOT NULL
+        GROUP BY t.name
         ORDER BY total_orders DESC
         LIMIT 10
         """
@@ -180,14 +178,12 @@ async def get_ccs_statistics_for_export() -> Dict[str, Any]:
         # 5. Recent activity (last 30 days)
         activity_query = """
         SELECT 
-            u.full_name as operator_name,
+            'System' as operator_name,
             COUNT(*) as recent_orders,
             MAX(co.created_at) as last_activity
         FROM connection_orders co
-        LEFT JOIN users u ON co.assigned_operator_id = u.id
-        WHERE u.role = 'callcenter_operator'
-        AND co.created_at >= NOW() - INTERVAL '30 days'
-        GROUP BY u.id, u.full_name
+        WHERE co.created_at >= NOW() - INTERVAL '30 days'
+        GROUP BY 'System'
         ORDER BY recent_orders DESC
         """
         
@@ -264,46 +260,6 @@ async def get_ccs_employees_for_export() -> List[Dict[str, Any]]:
         await conn.close()
 
 
-async def get_ccs_reports_for_export() -> List[Dict[str, Any]]:
-    """Get reports data for call center supervisor export"""
-    conn = await asyncpg.connect(settings.DB_URL)
-    try:
-        
-        # Get reports related to call center operations
-        query = """
-        SELECT 
-            co.id,
-            co.id as order_number,
-            u.full_name as client_name,
-            co.status,
-            co.created_at,
-            co.updated_at,
-            'Tayinlanmagan' as operator_name
-        FROM connection_orders co
-        LEFT JOIN users u ON co.user_id = u.id
-        ORDER BY co.created_at DESC
-        LIMIT 100
-        """
-        
-        rows = await conn.fetch(query)
-        
-        result = []
-        for row in rows:
-            result.append({
-                'ID': row['id'],
-                'Buyurtma raqami': row['order_number'],
-                'Mijoz ismi': row['client_name'] or '',
-                'Holati': row['status'] or '',
-                'Operator': row['operator_name'] or 'Tayinlanmagan',
-                'Yaratilgan sana': row['created_at'].strftime('%Y-%m-%d %H:%M:%S') if row['created_at'] else '',
-                'Yangilangan sana': row['updated_at'].strftime('%Y-%m-%d %H:%M:%S') if row['updated_at'] else ''
-            })
-        
-        return result
-        
-    finally:
-        await conn.close()
-
 
 async def get_ccs_operator_orders_for_export() -> List[Dict[str, Any]]:
     """Fetch orders/applications opened by call center operators for export"""
@@ -327,16 +283,11 @@ async def get_ccs_operator_orders_for_export() -> List[Dict[str, Any]]:
             u.full_name as client_name,
             u.phone as client_phone,
             t.name as tariff_name,
-            op.full_name as operator_name,
-            op.phone as operator_phone
+            '' as operator_name,
+            '' as operator_phone
         FROM connection_orders co
         LEFT JOIN users u ON co.user_id = u.id
         LEFT JOIN tarif t ON co.tarif_id = t.id
-        LEFT JOIN users op ON co.assigned_operator_id = op.id
-        WHERE op.role = 'callcenter_operator' OR co.id IN (
-            SELECT DISTINCT order_id FROM order_history 
-            WHERE created_by_role = 'callcenter_operator'
-        )
         ORDER BY co.created_at DESC
         """
         
@@ -385,15 +336,13 @@ async def get_ccs_operators_for_export() -> List[Dict[str, Any]]:
             u.role,
             u.is_blocked,
             u.created_at,
-            COUNT(co.id) as total_orders,
-            COUNT(CASE WHEN co.status = 'completed' THEN 1 END) as completed_orders,
-            COUNT(CASE WHEN co.status = 'in_progress' THEN 1 END) as in_progress_orders,
-            AVG(co.rating) as avg_rating,
-            MAX(co.updated_at) as last_activity
+            0 as total_orders,
+            0 as completed_orders,
+            0 as in_progress_orders,
+            0.0 as avg_rating,
+            u.created_at as last_activity
         FROM users u
-        LEFT JOIN connection_orders co ON u.id = co.assigned_operator_id
         WHERE u.role = 'callcenter_operator'
-        GROUP BY u.id, u.full_name, u.phone, u.telegram_id, u.role, u.is_blocked, u.created_at
         ORDER BY u.full_name
         """
         
