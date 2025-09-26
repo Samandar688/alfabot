@@ -33,7 +33,8 @@ CREATE TYPE public.connection_order_status AS ENUM (
     'completed',
     'in_call_center',
     'in_call_center_operator',
-    'in_call_center_supervisor'
+    'in_call_center_supervisor',
+    'between_controller_technician'
 );
 
 
@@ -49,8 +50,10 @@ CREATE TYPE public.saff_order_status AS ENUM (
     'in_controller',
     'in_warehouse',
     'in_technician',
+    'in_technician_work',
     'completed',
-    'cancelled'
+    'cancelled',
+    'between_controller_technician'
 );
 
 
@@ -114,7 +117,8 @@ CREATE TYPE public.technician_order_status AS ENUM (
     'in_warehouse',
     'in_technician_work',
     'completed',
-    'cancelled'
+    'cancelled',
+    'between_controller_technician'
 );
 
 
@@ -997,6 +1001,8 @@ ALTER TABLE ONLY public.users ALTER COLUMN id SET DEFAULT nextval('public.users_
 
 COPY public.akt_documents (id, request_id, request_type, akt_number, file_path, file_hash, created_at, sent_to_client_at) FROM stdin;
 1	1	connection	AKT-001	/docs/akt1.pdf	abc123	2025-09-24 16:58:36.098947+05	\N
+2	13	connection	AKT-13-20250926	documents\\AKT-13-20250926.docx	e36b0bbb939ca772a2bcbdd8acf66d644bbcd871219931924ac1946551b32785	2025-09-26 16:06:36.24867+05	2025-09-26 16:06:36.539279+05
+3	11	technician	AKT-11-20250926	documents\\AKT-11-20250926.docx	ceb9585f459b578dd5b0355e737e66042d1a63de417cc7146d481368078c04b7	2025-09-26 16:17:39.595537+05	2025-09-26 16:17:39.7652+05
 \.
 
 
@@ -1006,6 +1012,7 @@ COPY public.akt_documents (id, request_id, request_type, akt_number, file_path, 
 
 COPY public.akt_ratings (id, request_id, request_type, rating, comment, created_at) FROM stdin;
 1	1	connection	5	\N	2025-09-24 16:58:36.098947+05
+2	13	connection	5	Nice	2025-09-26 16:08:18.439926+05
 \.
 
 
@@ -1014,7 +1021,6 @@ COPY public.akt_ratings (id, request_id, request_type, rating, comment, created_
 --
 
 COPY public.connection_orders (id, user_id, region, address, tarif_id, longitude, latitude, rating, notes, jm_notes, controller_notes, is_active, status, created_at, updated_at) FROM stdin;
-1	2	\N	Chilonzor 12-45	1	\N	\N	\N	\N	\N		t	in_manager	2025-09-24 16:58:36.098947+05	2025-09-24 16:58:36.098947+05
 2	\N	Toshkent	Toshkent sh., Chilonzor t., 1-uy	1	69.240562	41.311081	\N	Yangi ulanish kerak	Texnik ko'rik o'tkazildi		t	in_warehouse	2025-09-24 15:01:01.15963+05	2025-09-24 17:01:01.15963+05
 3	\N	Samarqand	Samarqand sh., Registon ko'ch., 15-uy	2	66.975681	39.627012	\N	Internet ulanishi kerak	Hujjatlar tayyor		t	in_warehouse	2025-09-23 17:01:01.15963+05	2025-09-24 17:01:01.15963+05
 4	\N	Buxoro	Buxoro sh., Mustaqillik ko'ch., 25-uy	3	64.585262	39.767477	\N	Tezkor ulanish so'ralmoqda	Barcha tekshiruvlar tugallandi		t	in_warehouse	2025-09-24 14:01:01.15963+05	2025-09-24 17:01:01.15963+05
@@ -1025,6 +1031,10 @@ COPY public.connection_orders (id, user_id, region, address, tarif_id, longitude
 9	\N	3	Buxoro sh., Mustaqillik ko'ch., 25-uy	1	64.585262	39.767477	\N	Telefon liniyasini tiklash	\N		t	in_warehouse	2025-09-24 15:09:30.472643+05	2025-09-24 17:09:30.472643+05
 10	\N	4	Andijon sh., Navoi ko'ch., 10-uy	3	72.344415	40.781731	3	Kabel almashtirish	Materiallar tayyor		t	in_warehouse	2025-09-24 15:39:30.472643+05	2025-09-24 17:09:30.472643+05
 11	\N	5	Farg'ona sh., Mustaqillik ko'ch., 15-uy	2	71.784492	40.384138	\N	Modem sozlash	Tezkor bajarish kerak		t	in_warehouse	2025-09-24 16:09:30.472643+05	2025-09-24 17:09:30.472643+05
+1	2	\N	Chilonzor 12-45	1	\N	\N	\N	\N	\N		t	between_controller_technician	2025-09-24 16:58:36.098947+05	2025-09-26 15:58:03.593418+05
+13	11	andijon	15ariq	2	\N	\N	\N	\N	\N		t	completed	2025-09-26 15:36:51.131131+05	2025-09-26 16:06:35.507379+05
+14	11	toshkent shahri	cholobod	2	64.674757	40.615796	\N	\N	\N		t	in_technician_work	2025-09-26 15:39:02.692428+05	2025-09-26 16:35:56.30705+05
+12	11	navoiy	qorachol	2	\N	\N	\N	\N	\N		f	in_technician_work	2025-09-26 15:36:17.865382+05	2025-09-26 16:45:06.305527+05
 \.
 
 
@@ -1033,6 +1043,34 @@ COPY public.connection_orders (id, user_id, region, address, tarif_id, longitude
 --
 
 COPY public.connections (id, sender_id, recipient_id, connection_order_id, technician_id, saff_id, created_at, updated_at, sender_status, recipient_status, connecion_id) FROM stdin;
+1	4	10	13	\N	\N	2025-09-26 15:41:12.239321+05	2025-09-26 15:41:12.239321+05	in_manager	in_junior_manager	13
+2	4	10	14	\N	\N	2025-09-26 15:41:20.633503+05	2025-09-26 15:41:20.633503+05	in_manager	in_junior_manager	14
+3	10	8	13	\N	\N	2025-09-26 15:41:40.500772+05	2025-09-26 15:41:40.500772+05	in_junior_manager	in_controller	13
+4	10	8	14	\N	\N	2025-09-26 15:41:44.672146+05	2025-09-26 15:41:44.672146+05	in_junior_manager	in_controller	14
+5	4	10	12	\N	\N	2025-09-26 15:52:33.642618+05	2025-09-26 15:52:33.642618+05	in_manager	in_junior_manager	12
+6	4	10	1	\N	\N	2025-09-26 15:52:40.394444+05	2025-09-26 15:52:40.394444+05	in_manager	in_junior_manager	1
+7	10	8	12	\N	\N	2025-09-26 15:52:48.617418+05	2025-09-26 15:52:48.617418+05	in_junior_manager	in_controller	12
+8	10	8	1	\N	\N	2025-09-26 15:52:52.126644+05	2025-09-26 15:52:52.126644+05	in_junior_manager	in_controller	1
+9	9	8	14	\N	\N	2025-09-26 15:55:11.608719+05	2025-09-26 15:55:11.608719+05	in_controller	between_controller_technician	14
+10	9	8	\N	12	\N	2025-09-26 15:56:46.913019+05	2025-09-26 15:56:46.913019+05	in_controller	between_controller_technician	\N
+11	9	8	13	\N	\N	2025-09-26 15:57:13.01219+05	2025-09-26 15:57:13.01219+05	in_controller	between_controller_technician	13
+12	9	8	12	\N	\N	2025-09-26 15:57:34.091281+05	2025-09-26 15:57:34.091281+05	in_controller	between_controller_technician	12
+13	9	8	1	\N	\N	2025-09-26 15:58:03.593418+05	2025-09-26 15:58:03.593418+05	in_controller	between_controller_technician	1
+14	9	8	\N	11	\N	2025-09-26 15:58:20.766646+05	2025-09-26 15:58:20.766646+05	in_controller	between_controller_technician	\N
+15	9	8	\N	\N	12	2025-09-26 16:05:16.554507+05	2025-09-26 16:05:16.554507+05	in_controller	between_controller_technician	\N
+16	9	8	\N	\N	11	2025-09-26 16:05:30.501233+05	2025-09-26 16:05:30.501233+05	in_controller	between_controller_technician	\N
+17	8	8	13	\N	\N	2025-09-26 16:06:02.201411+05	2025-09-26 16:06:02.201411+05	between_controller_technician	in_technician	13
+18	8	8	13	\N	\N	2025-09-26 16:06:06.931034+05	2025-09-26 16:06:06.931034+05	in_technician	in_technician_work	13
+19	8	8	13	\N	\N	2025-09-26 16:06:35.507379+05	2025-09-26 16:06:35.507379+05	in_technician_work	completed	13
+20	8	8	\N	12	\N	2025-09-26 16:16:40.345476+05	2025-09-26 16:16:40.345476+05	between_controller_technician	in_technician	\N
+21	8	8	\N	11	\N	2025-09-26 16:16:47.170815+05	2025-09-26 16:16:47.170815+05	between_controller_technician	in_technician	\N
+22	8	8	\N	11	\N	2025-09-26 16:16:58.448923+05	2025-09-26 16:16:58.448923+05	in_technician	in_technician_work	\N
+23	8	8	\N	11	\N	2025-09-26 16:17:39.023234+05	2025-09-26 16:17:39.023234+05	in_technician_work	completed	\N
+24	8	8	12	\N	\N	2025-09-26 16:26:12.861574+05	2025-09-26 16:26:12.861574+05	between_controller_technician	in_technician	12
+25	8	8	12	\N	\N	2025-09-26 16:26:16.34416+05	2025-09-26 16:26:16.34416+05	in_technician	in_technician_work	12
+26	8	8	14	\N	\N	2025-09-26 16:35:52.736135+05	2025-09-26 16:35:52.736135+05	between_controller_technician	in_technician	14
+27	8	8	14	\N	\N	2025-09-26 16:35:56.30705+05	2025-09-26 16:35:56.30705+05	in_technician	in_technician_work	14
+28	9	8	\N	\N	13	2025-09-26 16:45:32.083466+05	2025-09-26 16:45:32.083466+05	in_controller	between_controller_technician	\N
 \.
 
 
@@ -1056,6 +1094,10 @@ COPY public.material_and_technician (id, user_id, material_id, quantity) FROM st
 13	5	12	16
 14	6	12	16
 15	7	12	16
+22	8	11	2
+23	8	16	8
+24	8	18	400
+25	8	17	6
 \.
 
 
@@ -1069,6 +1111,8 @@ COPY public.material_requests (id, description, user_id, applications_id, materi
 3	Test - Ethernet kabel va konnektorlar	1	3	11	3	\N	\N	20	2.50	50.00
 4	Test - Modem almashtirish uchun	1	4	10	\N	1	\N	1	45.00	45.00
 5	Test - Splitter va konnektorlar	1	5	12	\N	2	\N	2	12.00	24.00
+6	\N	8	13	11	\N	\N	\N	1	2.50	2.50
+7	\N	8	11	11	\N	\N	\N	1	2.50	2.50
 \.
 
 
@@ -1081,8 +1125,18 @@ COPY public.materials (id, name, price, description, quantity, serial_number, cr
 8	Test Optik kabel	15.50	Yuqori sifatli optik kabel	1	TEST-OPT-001	2025-09-24 17:37:22.512351+05	2025-09-26 14:49:12.665843+05
 9	Test Router TP-Link	85.00	Wi-Fi router uy uchun	1	TEST-RTR-001	2025-09-24 17:37:22.512351+05	2025-09-26 14:49:12.665843+05
 10	Test Modem ADSL	45.00	ADSL internet modemi	0	TEST-MDM-001	2025-09-24 17:37:22.512351+05	2025-09-26 14:49:12.665843+05
-11	Test Ethernet kabel	2.50	Cat6 ethernet kabeli	2	TEST-ETH-001	2025-09-24 17:37:22.512351+05	2025-09-26 14:49:12.665843+05
 12	Test Splitter	12.00	Signal ajratuvchi	2	TEST-SPL-001	2025-09-24 17:37:22.512351+05	2025-09-26 14:49:12.665843+05
+11	Test Ethernet kabel	2.50	Cat6 ethernet kabeli	0	TEST-ETH-001	2025-09-24 17:37:22.512351+05	2025-09-26 16:03:31.282225+05
+13	Switch 16-port	250.00	Ofis uchun 16 portli switch	5	SW-016-001	2025-09-26 16:07:55.097721+05	2025-09-26 16:07:55.097721+05
+14	Patch panel 24-port	120.00	Server xonasi uchun patch panel	3	PP-024-001	2025-09-26 16:07:55.097721+05	2025-09-26 16:07:55.097721+05
+15	Wi-Fi Router ASUS	95.00	Yuqori tezlikdagi Wi-Fi router	4	RTR-ASUS-001	2025-09-26 16:07:55.097721+05	2025-09-26 16:07:55.097721+05
+19	Optical Splitter 1x4	25.00	Optik signalni 4 ga ajratuvchi splitter	8	OS-1X4-001	2025-09-26 16:07:55.097721+05	2025-09-26 16:07:55.097721+05
+20	Fiber Cleaver	150.00	Optik tolani kesuvchi maxsus asbob	2	FC-001	2025-09-26 16:07:55.097721+05	2025-09-26 16:07:55.097721+05
+21	ADSL Splitter	5.00	Telefon va internet signalini ajratuvchi	15	ADSL-SPL-001	2025-09-26 16:07:55.097721+05	2025-09-26 16:07:55.097721+05
+22	Crimping Tool	20.00	Ethernet ulagichlarni siquvchi asbob	6	CT-001	2025-09-26 16:07:55.097721+05	2025-09-26 16:07:55.097721+05
+16	Power Supply 12V	18.00	12 voltli quvvat manbai	2	PS-12V-001	2025-09-26 16:07:55.097721+05	2025-09-26 16:08:15.988435+05
+18	RJ-45 Connector	0.50	Ethernet uchun RJ-45 ulagich	100	RJ45-001	2025-09-26 16:07:55.097721+05	2025-09-26 16:08:27.093368+05
+17	Media Converter	45.00	Optikdan Ethernetga o‘tkazuvchi qurilma	1	MC-001	2025-09-26 16:07:55.097721+05	2025-09-26 16:08:42.724729+05
 \.
 
 
@@ -1110,6 +1164,9 @@ COPY public.saff_orders (id, user_id, phone, region, abonent_id, tarif_id, addre
 8	\N	+998901234569	3	AB123458	1	Buxoro sh., Mustaqillik ko'ch., 25-uy	Telefon liniyasini tiklash	in_warehouse	technician	t	2025-09-24 16:24:30.481428+05	2025-09-24 17:09:30.481428+05
 9	\N	+998901234570	4	AB123459	3	Andijon sh., Navoi ko'ch., 10-uy	Kabel almashtirish	in_warehouse	connection	t	2025-09-24 16:39:30.481428+05	2025-09-24 17:09:30.481428+05
 10	\N	+998901234571	5	AB123460	2	Farg'ona sh., Mustaqillik ko'ch., 15-uy	Modem sozlash	in_warehouse	technician	t	2025-09-24 16:54:30.481428+05	2025-09-24 17:09:30.481428+05
+12	4	998911223344	11	3	\N	fwefwefwqaf	geregaewsgrwesg	between_controller_technician	technician	t	2025-09-26 16:04:43.953813+05	2025-09-26 16:05:16.554507+05
+11	4	998911223344	9	3	1	faesfawfawesfwes		between_controller_technician	connection	t	2025-09-26 16:04:12.981794+05	2025-09-26 16:05:30.501233+05
+13	4	998911223344	5	3	3	qfqwfqwf		between_controller_technician	connection	t	2025-09-26 16:39:30.712567+05	2025-09-26 16:45:32.083466+05
 \.
 
 
@@ -1130,8 +1187,8 @@ COPY public.smart_service_orders (id, user_id, category, service_type, address, 
 COPY public.tarif (id, name, picture, created_at, updated_at) FROM stdin;
 1	Hammasi birga 4		2025-09-24 16:58:36.098947+05	2025-09-24 16:58:36.098947+05
 2	Hammasi birga 3+		2025-09-24 16:58:36.098947+05	2025-09-24 16:58:36.098947+05
-3	Домашний Интернет+		2025-09-24 16:58:36.098947+05	2025-09-24 16:58:36.098947+05
-4	Супер ТВ пакет		2025-09-24 16:58:36.098947+05	2025-09-24 16:58:36.098947+05
+3	Hammasi birga 3		2025-09-24 16:58:36.098947+05	2025-09-26 15:39:11.194001+05
+4	Hammasi birga 2		2025-09-24 16:58:36.098947+05	2025-09-26 15:39:28.226541+05
 \.
 
 
@@ -1150,6 +1207,9 @@ COPY public.technician_orders (id, user_id, region, abonent_id, address, media, 
 8	1	3	AB123458	Buxoro sh., Mustaqillik ko'ch., 25-uy	\N	\N	\N	Telefon ishlamayapti	Liniya tiklash	\N	in_warehouse	\N	Kabel zararlanган	t	2025-09-24 15:24:30.480304+05	2025-09-24 17:11:08.852327+05
 9	2	4	AB123459	Andijon sh., Navoi ko'ch., 10-uy	\N	\N	\N	Internet tezligi sekin	Modem almashtirish	\N	in_warehouse	\N	Yangi modem tayyor	t	2025-09-24 15:54:30.480304+05	2025-09-24 17:11:08.852774+05
 10	3	5	AB123460	Farg'ona sh., Mustaqillik ko'ch., 15-uy	\N	\N	\N	Barcha xizmatlar ishlamayapti	To'liq texnik ko'rik kerak	\N	in_warehouse	\N	Kompleks ta'mirlash	t	2025-09-24 16:24:30.480304+05	2025-09-24 17:11:08.853159+05
+12	11	6	65161661616	hayot kochai	AgACAgIAAxkBAAITMmjWbj6aFkgwTJjasfeQTBQodm1KAAKu9DEbPYe5Snt9-BiEXpeZAQADAgADeQADNgQ	64.494987	41.502636	hayot toxtab qoldi	\N	\N	in_technician	\N	\N	t	2025-09-26 15:43:30.218794+05	2025-09-26 16:16:40.345476+05
+13	11	1	12345678	Abdulla Qodiriy ko'chasi, 1-uy	\N	\N	\N	Bakirali meshat qilyapti	\N	\N	in_controller	\N	\N	t	2025-09-26 16:17:02.776135+05	2025-09-26 16:17:02.776135+05
+11	11	6	1234567890	manzil kocha	AgACAgIAAxkBAAITBmjWbZwwy46InOmj_0rgr6wm4QnMAAKo9DEbPYe5Sp-mDKL9mvgNAQADAgADeQADNgQ	\N	\N	wifi router portlab ketdi	lkfajsdlfj asdjasdfl ajsdl asdfasd	\N	completed	\N	\N	t	2025-09-26 15:40:37.505731+05	2025-09-26 16:17:39.023234+05
 \.
 
 
@@ -1160,11 +1220,15 @@ COPY public.technician_orders (id, user_id, region, abonent_id, address, media, 
 COPY public.users (id, telegram_id, full_name, username, phone, language, region, address, role, abonent_id, is_blocked, created_at, updated_at) FROM stdin;
 2	210000001	Aziz Karimov	aziz_k	998901234567	uz	1	Chilonzor	client	1001	f	2025-09-24 16:58:36.098947+05	2025-09-24 16:58:36.098947+05
 3	310000001	Александр Петров	alex_petrov	998911223344	ru	1	ул. Пушкина	client	2001	f	2025-09-24 16:58:36.098947+05	2025-09-24 16:58:36.098947+05
-4	8188731606	test	ibrohim_fx01	+998881249327	uz	\N	\N	warehouse	\N	f	2025-09-24 16:58:44.697161+05	2025-09-24 16:58:59.606542+05
-1	1978574076	Ulug‘bek Administrator	ulugbekbb	998900042544	uz	1	Toshkent	warehouse	ADM001	f	2025-09-24 16:58:36.098947+05	2025-09-26 14:08:00.944121+05
 5	910000001	Ali Rahimov	tech_ali	998901110011	uz	1	Toshkent	technician	\N	f	2025-09-26 14:49:12.665843+05	2025-09-26 14:49:12.665843+05
 6	910000002	Bekzod Karimov	tech_bek	998901110022	uz	1	Toshkent	technician	\N	f	2025-09-26 14:49:12.665843+05	2025-09-26 14:49:12.665843+05
 7	910000003	Sardor Akmalov	tech_sardor	998901110033	uz	1	Toshkent	technician	\N	f	2025-09-26 14:49:12.665843+05	2025-09-26 14:49:12.665843+05
+10	5955605892	Salom	gulsara_yakubjanova	998908103399	uz	\N	\N	junior_manager	\N	f	2025-09-26 15:31:00.778945+05	2025-09-26 15:33:40.249929+05
+1	1978574076	Ulug‘bek Administrator	ulugbekbb	998900042544	uz	1	Toshkent	warehouse	ADM001	f	2025-09-24 16:58:36.098947+05	2025-09-26 15:34:10.954112+05
+11	8401544590	Abdumuratov Abdumannop	abdumuratov_off	+998912340024	uz	\N	\N	client	\N	f	2025-09-26 15:35:18.802427+05	2025-09-26 16:15:28.575195+05
+4	8188731606	Ibrohimbek	ibrohim_fx01	+998881249327	uz	\N	\N	manager	\N	f	2025-09-24 16:58:44.697161+05	2025-09-26 16:39:30.60686+05
+9	7793341014	alijon	bakiralizokirov	+998937490211	uz	\N	\N	callcenter_supervisor	\N	f	2025-09-26 15:30:37.514558+05	2025-09-26 16:56:44.323535+05
+8	2129817198	Bakirali Zokirov	bakirali_zokirov	+998908200120	uz	\N	\N	callcenter_operator	\N	f	2025-09-26 15:27:39.231117+05	2025-09-26 17:00:32.08924+05
 \.
 
 
@@ -1172,49 +1236,49 @@ COPY public.users (id, telegram_id, full_name, username, phone, language, region
 -- Name: akt_documents_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.akt_documents_id_seq', 1, true);
+SELECT pg_catalog.setval('public.akt_documents_id_seq', 3, true);
 
 
 --
 -- Name: akt_ratings_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.akt_ratings_id_seq', 1, true);
+SELECT pg_catalog.setval('public.akt_ratings_id_seq', 3, true);
 
 
 --
 -- Name: connection_orders_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.connection_orders_id_seq', 11, true);
+SELECT pg_catalog.setval('public.connection_orders_id_seq', 14, true);
 
 
 --
 -- Name: connections_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.connections_id_seq', 1, false);
+SELECT pg_catalog.setval('public.connections_id_seq', 28, true);
 
 
 --
 -- Name: material_and_technician_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.material_and_technician_id_seq', 21, true);
+SELECT pg_catalog.setval('public.material_and_technician_id_seq', 25, true);
 
 
 --
 -- Name: material_requests_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.material_requests_id_seq', 5, true);
+SELECT pg_catalog.setval('public.material_requests_id_seq', 7, true);
 
 
 --
 -- Name: materials_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.materials_id_seq', 12, true);
+SELECT pg_catalog.setval('public.materials_id_seq', 48, true);
 
 
 --
@@ -1228,7 +1292,7 @@ SELECT pg_catalog.setval('public.reports_id_seq', 1, true);
 -- Name: saff_orders_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.saff_orders_id_seq', 10, true);
+SELECT pg_catalog.setval('public.saff_orders_id_seq', 13, true);
 
 
 --
@@ -1249,14 +1313,14 @@ SELECT pg_catalog.setval('public.tarif_id_seq', 4, true);
 -- Name: technician_orders_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.technician_orders_id_seq', 10, true);
+SELECT pg_catalog.setval('public.technician_orders_id_seq', 13, true);
 
 
 --
 -- Name: user_sequential_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.user_sequential_id_seq', 4, true);
+SELECT pg_catalog.setval('public.user_sequential_id_seq', 11, true);
 
 
 --
