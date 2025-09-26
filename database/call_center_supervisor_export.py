@@ -78,7 +78,7 @@ async def get_ccs_statistics_for_export() -> Dict[str, Any]:
         summary_query = """
         SELECT 
             COUNT(*) as total_orders,
-            COUNT(CASE WHEN status = 'new' THEN 1 END) as new_orders,
+            COUNT(CASE WHEN status = 'in_manager' THEN 1 END) as new_orders,
             COUNT(CASE WHEN status IN ('in_progress', 'assigned') THEN 1 END) as in_progress_orders,
             COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_orders,
             COUNT(DISTINCT u.phone) as unique_clients,
@@ -133,7 +133,7 @@ async def get_ccs_statistics_for_export() -> Dict[str, Any]:
         SELECT 
             TO_CHAR(co.created_at, 'YYYY-MM') as month,
             COUNT(*) as total_orders,
-            COUNT(CASE WHEN co.status = 'new' THEN 1 END) as new_orders,
+            COUNT(CASE WHEN co.status = 'in_manager' THEN 1 END) as new_orders,
             COUNT(CASE WHEN co.status = 'completed' THEN 1 END) as completed_orders
         FROM connection_orders co
         LEFT JOIN users u ON co.assigned_operator_id = u.id

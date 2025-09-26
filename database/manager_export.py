@@ -62,7 +62,7 @@ async def get_manager_statistics_for_export() -> Dict[str, Any]:
         stats['general'] = await conn.fetchrow("""
             SELECT 
                 COUNT(*) as total_orders,
-                SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) as new_orders,
+                SUM(CASE WHEN status = 'in_manager' THEN 1 ELSE 0 END) as new_orders,
                 SUM(CASE WHEN status IN ('in_manager', 'in_junior_manager', 'in_controller', 'in_technician', 'in_diagnostics', 'in_repairs', 'in_warehouse', 'in_technician_work') THEN 1 ELSE 0 END) as in_progress_orders,
                 SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_orders,
                 COUNT(DISTINCT user_id) as unique_clients,
@@ -76,7 +76,7 @@ async def get_manager_statistics_for_export() -> Dict[str, Any]:
                 TO_CHAR(created_at, 'YYYY-MM') as month,
                 COUNT(*) as total_orders,
                 SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_orders,
-                SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) as new_orders
+                SUM(CASE WHEN status = 'in_manager' THEN 1 ELSE 0 END) as new_orders
             FROM connection_orders
             WHERE created_at >= NOW() - INTERVAL '6 months'
             GROUP BY TO_CHAR(created_at, 'YYYY-MM')

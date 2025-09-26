@@ -154,7 +154,7 @@ async def get_controller_statistics_for_export() -> Dict[str, Any]:
         stats['general'] = await conn.fetchrow("""
             SELECT 
                 COUNT(*) as total_requests,
-                SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) as new_requests,
+                SUM(CASE WHEN status = 'in_manager' THEN 1 ELSE 0 END) as new_requests,
                 SUM(CASE WHEN status IN ('in_controller', 'in_technician', 'in_diagnostics', 'in_repairs', 'in_warehouse') THEN 1 ELSE 0 END) as in_progress_requests,
                 SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_requests,
                 COUNT(DISTINCT user_id) as unique_clients,
@@ -168,7 +168,7 @@ async def get_controller_statistics_for_export() -> Dict[str, Any]:
                 TO_CHAR(created_at, 'YYYY-MM') as month,
                 COUNT(*) as total_requests,
                 SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_requests,
-                SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) as new_requests
+                SUM(CASE WHEN status = 'in_manager' THEN 1 ELSE 0 END) as new_requests
             FROM technician_orders
             WHERE created_at >= NOW() - INTERVAL '6 months'
             GROUP BY TO_CHAR(created_at, 'YYYY-MM')

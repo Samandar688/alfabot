@@ -89,7 +89,7 @@ def connection_order_text(item: dict, lang: str) -> str:
     region = esc(item.get('region', '-'))
     tarif_name = esc(item.get('tarif_name', '-'))
     status_map = connection_status_names(lang)
-    status = status_map.get(item.get('status', 'new'), item.get('status', 'new'))
+    status = status_map.get(item.get('status', 'in_manager'), item.get('status', 'in_manager'))
     notes = esc(item.get('notes', '-'))
     jm_notes = esc(item.get('jm_notes', '-'))
     rating = item.get('rating', 0) or 0
@@ -147,7 +147,7 @@ def technician_order_text(item: dict, lang: str) -> str:
     abonent_id = esc(item.get('abonent_id', '-'))
     description = esc(item.get('description', '-'))
     status_map = technician_status_names(lang)
-    status = status_map.get(item.get('status', 'new'), item.get('status', 'new'))
+    status = status_map.get(item.get('status', 'in_technician'), item.get('status', 'in_technician'))
     notes = esc(item.get('notes', '-'))
     rating = item.get('rating', 0) or 0
     
@@ -204,7 +204,7 @@ def saff_order_text(item: dict, lang: str) -> str:
     abonent_id = esc(item.get('abonent_id', '-'))
     description = esc(item.get('description', '-'))
     status_map = connection_status_names(lang)
-    status = status_map.get(item.get('status', 'new'), item.get('status', 'new'))
+    status = status_map.get(item.get('status', 'in_call_center_supervisor'), item.get('status', 'in_call_center_supervisor'))
     tarif_name = esc(item.get('tarif_name', '-'))
     type_of_zayavka = esc(item.get('type_of_zayavka', '-'))
     

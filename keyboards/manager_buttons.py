@@ -10,7 +10,7 @@ def get_manager_main_menu(lang: str = "uz") -> ReplyKeyboardMarkup:
             [KeyboardButton(text="🛜 SmartService arizalari")],
             # 📊 Monitoring va 🔄 Status o'zgartirish OLIB TASHLANDI
             [KeyboardButton(text="🕐 Real vaqtda kuzatish"), KeyboardButton(text="👥 Xodimlar faoliyati")],
-            [KeyboardButton(text="📤 Export"), KeyboardButton(text="🌐 Tilni o'zgartirish")],
+            [KeyboardButton(text="🌐 Tilni o'zgartirish")],
         ]
     else:  # ruscha
         keyboard = [
@@ -19,13 +19,33 @@ def get_manager_main_menu(lang: str = "uz") -> ReplyKeyboardMarkup:
             [KeyboardButton(text="🛜 SmartService заявки")],
             # 📊 Мониторинг и 🔄 Изменить статус УДАЛЕНЫ
             [KeyboardButton(text="🕐 Мониторинг в реальном времени"), KeyboardButton(text="👥 Активность сотрудников")],
-            [KeyboardButton(text="📤 Экспорт"), KeyboardButton(text="🌐 Изменить язык")],
+            [KeyboardButton(text="🌐 Изменить язык")],
         ]
     return ReplyKeyboardMarkup(
         keyboard=keyboard,
         resize_keyboard=True,
         one_time_keyboard=False
     )
+
+def get_manager_status_keyboard(lang: str = "uz") -> InlineKeyboardMarkup:
+    """Manager status selection keyboard"""
+    if lang == "uz":
+        keyboard = [
+            [InlineKeyboardButton(text="🔄 Yangi", callback_data="manager_status_new")],
+            [InlineKeyboardButton(text="⏳ Jarayonda", callback_data="manager_status_in_progress")],
+            [InlineKeyboardButton(text="✅ Bajarildi", callback_data="manager_status_completed")],
+            [InlineKeyboardButton(text="❌ Bekor qilindi", callback_data="manager_status_cancelled")],
+            [InlineKeyboardButton(text="🚫 Yopish", callback_data="manager_status_end")]
+        ]
+    else:
+        keyboard = [
+            [InlineKeyboardButton(text="🔄 Новый", callback_data="manager_status_new")],
+            [InlineKeyboardButton(text="⏳ В процессе", callback_data="manager_status_in_progress")],
+            [InlineKeyboardButton(text="✅ Выполнено", callback_data="manager_status_completed")],
+            [InlineKeyboardButton(text="❌ Отменено", callback_data="manager_status_cancelled")],
+            [InlineKeyboardButton(text="🚫 Выход", callback_data="manager_status_end")]
+        ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def zayavka_type_keyboard(lang="uz"):
     """Zayavka turini tanlash klaviaturasi - 2 tilda"""
@@ -39,6 +59,20 @@ def zayavka_type_keyboard(lang="uz"):
         ]
     )
     return keyboard
+
+def get_operator_tariff_selection_keyboard() -> InlineKeyboardMarkup:
+    """Tariff selection keyboard for CALL-CENTER OPERATOR (UZ only)."""
+    keyboard = [
+        [
+            InlineKeyboardButton(text="Hammasi birga 4", callback_data="op_tariff_xammasi_birga_4"),
+            InlineKeyboardButton(text="Hammasi birga 3+", callback_data="op_tariff_xammasi_birga_3_plus"),
+        ],
+        [
+            InlineKeyboardButton(text="Hammasi birga 3", callback_data="op_tariff_xammasi_birga_3"),
+            InlineKeyboardButton(text="Hammasi birga 2", callback_data="op_tariff_xammasi_birga_2"),
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def get_operator_tariff_selection_keyboard() -> InlineKeyboardMarkup:
     """Tariff selection keyboard for CALL-CENTER OPERATOR (UZ only)."""

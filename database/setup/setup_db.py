@@ -363,7 +363,7 @@ CREATE TABLE connection_orders (
     notes TEXT,
     jm_notes TEXT,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    status connection_order_status NOT NULL DEFAULT 'new',
+    status connection_order_status NOT NULL DEFAULT 'in_manager',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -414,7 +414,7 @@ CREATE TABLE connections (
     jm_notes TEXT,
     controller_notes TEXT NOT NULL DEFAULT '',
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    status connection_order_status NOT NULL DEFAULT 'new',
+    status connection_order_status NOT NULL DEFAULT 'in_manager',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -549,7 +549,7 @@ CREATE TABLE smart_service_orders (
     longitude DOUBLE PRECISION,
     latitude DOUBLE PRECISION,
     media_files JSONB,
-    status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'in_progress', 'completed', 'cancelled')),
+    status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN ('in_progress', 'completed', 'cancelled')),
     assigned_to BIGINT REFERENCES users(id) ON DELETE SET NULL,
     rating INTEGER CHECK (rating >= 1 AND rating <= 5),
     notes TEXT,
@@ -586,7 +586,7 @@ CREATE TABLE technician_orders (
     latitude DOUBLE PRECISION,
     description TEXT,
     description_ish TEXT,
-    status technician_order_status NOT NULL DEFAULT 'new',
+    status technician_order_status NOT NULL DEFAULT 'in_technician',
     rating INTEGER CHECK (rating >= 1 AND rating <= 5),
     notes TEXT,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,

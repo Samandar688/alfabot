@@ -72,7 +72,7 @@ async def fetch_manager_inbox(limit: int = 50, offset: int = 0) -> List[Dict[str
             LEFT JOIN users u ON u.id = co.user_id
             LEFT JOIN tarif t ON t.id = co.tarif_id
             WHERE co.is_active = TRUE
-              AND co.status IN ('new','in_manager')
+              AND co.status IN ('in_manager')
             ORDER BY co.created_at DESC, co.id DESC
             LIMIT $1 OFFSET $2
             """,
@@ -176,7 +176,7 @@ async def count_manager_inbox() -> int:
             SELECT COUNT(*)
               FROM connection_orders co
              WHERE co.is_active = TRUE
-               AND co.status IN ('new','in_manager')
+               AND co.status IN ('in_manager')
             """
         )
     finally:
