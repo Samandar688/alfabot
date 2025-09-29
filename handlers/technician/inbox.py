@@ -455,6 +455,8 @@ async def tech_accept(cb: CallbackQuery, state: FSMContext):
     try:
         if mode == "technician":
             ok = await accept_technician_work_for_tech(applications_id=req_id, technician_id=user["id"])
+        elif mode == "saff":
+            ok = await accept_technician_work_for_saff(applications_id=req_id, technician_id=user["id"])
         else:
             ok = await accept_technician_work(applications_id=req_id, technician_id=user["id"])
         if not ok:
@@ -523,6 +525,8 @@ async def tech_start(cb: CallbackQuery, state: FSMContext):
     try:
         if mode == "technician":
             ok = await start_technician_work_for_tech(applications_id=req_id, technician_id=user["id"])
+        elif mode == "saff":
+            ok = await start_technician_work_for_saff(applications_id=req_id, technician_id=user["id"])
         else:
             ok = await start_technician_work(applications_id=req_id, technician_id=user["id"])
         if not ok:

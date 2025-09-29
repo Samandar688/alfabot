@@ -79,7 +79,7 @@ async def get_ccs_statistics_for_export() -> Dict[str, Any]:
         SELECT 
             COUNT(*) as total_orders,
             COUNT(CASE WHEN status = 'in_manager' THEN 1 END) as new_orders,
-            COUNT(CASE WHEN status IN ('in_progress', 'assigned') THEN 1 END) as in_progress_orders,
+            COUNT(CASE WHEN status IN ('in_junior_manager', 'in_controller', 'between_controller_technician', 'in_technician', 'in_warehouse', 'in_technician_work') THEN 1 END) as in_progress_orders,
             COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_orders,
             COUNT(DISTINCT u.phone) as unique_clients,
             COUNT(DISTINCT t.name) as unique_tariffs_used

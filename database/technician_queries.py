@@ -295,25 +295,44 @@ async def finish_technician_work(applications_id: int,
 
 
 # ======================= MATERIALLAR (SELECTION) =======================
-async def fetch_technician_materials(user_id: int) -> List[Dict[str, Any]]:
+async def fetch_technician_materials(user_id: int = None, limit: int = 200, offset: int = 0) -> List[Dict[str, Any]]:
     conn = await _conn()
     try:
-        rows = await conn.fetch(
-            """
-            SELECT
-              m.id          AS material_id,
-              m.name,
-              m.price,
-              m.serial_number,
-              t.quantity    AS stock_quantity
-            FROM material_and_technician t
-            JOIN materials m ON m.id = t.material_id
-            WHERE t.user_id = $1
-              AND t.quantity > 0
-            ORDER BY m.name
-            """,
-            user_id
-        )
+        if user_id is not None:
+            rows = await conn.fetch(
+                """
+                SELECT
+                  m.id          AS material_id,
+                  m.name,
+                  m.price,
+                  m.serial_number,
+                  t.quantity    AS stock_quantity
+                FROM material_and_technician t
+                JOIN materials m ON m.id = t.material_id
+                WHERE t.user_id = $1
+                  AND t.quantity > 0
+                ORDER BY m.name
+                LIMIT $2 OFFSET $3
+                """,
+                user_id, limit, offset
+            )
+        else:
+            rows = await conn.fetch(
+                """
+                SELECT
+                  m.id          AS material_id,
+                  m.name,
+                  m.price,
+                  m.serial_number,
+                  t.quantity    AS stock_quantity
+                FROM material_and_technician t
+                JOIN materials m ON m.id = t.material_id
+                WHERE t.quantity > 0
+                ORDER BY m.name
+                LIMIT $1 OFFSET $2
+                """,
+                limit, offset
+            )
         return _as_dicts(rows)
     finally:
         await conn.close()

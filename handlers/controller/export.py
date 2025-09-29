@@ -128,6 +128,15 @@ async def export_format_handler(callback: CallbackQuery, state: FSMContext):
             
         elif export_type == "statistics":
             stats = await get_controller_statistics_for_export()
+
+            if not stats or 'summary' not in stats:
+                logger.error("Failed to get statistics for export or summary is missing.")
+                await callback.message.answer(
+                    "❌ Statistika ma'lumotlarini olishda xatolik yuz berdi.\n"
+                    "Iltimos, keyinroq qayta urinib ko'ring."
+                )
+                await callback.answer()
+                return
             raw_data = []
             title = "Statistika hisoboti"
             filename_base = "statistika"
