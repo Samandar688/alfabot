@@ -45,8 +45,8 @@ async def get_users_by_role(role: str) -> List[Dict[str, Any]]:
 
 
 # Moslik uchun wrapper (ImportError bo‘lmasin)
-async def get_callcenter_operators() -> List[Dict[str, Any]]:  # <— YANGI
-    return await get_users_by_role("callcenter_operator")
+async def get_callcenter_supervisors() -> List[Dict[str, Any]]:  # <— YANGI
+    return await get_users_by_role("callcenter_supervisor")
 
 
 # ===========================
@@ -153,6 +153,8 @@ async def fetch_controller_inbox_tech(limit: int = 50, offset: int = 0) -> List[
                 to2.address,
                 to2.region,
                 to2.status,
+                to2.description,
+                to2.media,
                 to2.created_at,
                 u.full_name AS client_name,
                 u.phone     AS client_phone,
@@ -547,10 +549,10 @@ async def ensure_in_call_center_operator_enum() -> None:
         await conn.close()
 
 
-async def assign_to_operator_for_tech(request_id: int | str, operator_id: int, actor_id: int) -> None:
+async def assign_to_supervisor_for_tech(request_id: int | str, supervisor_id: int, actor_id: int) -> None:
     """
-    technician_orders:  status -> 'in_call_center_operator'
-    connections:        controller -> operator yozuvi
+    technician_orders:  status -> 'in_call_center_supervisor'
+    connections:        controller -> callcenter_supervisor yozuvi
                         ✅ technician_id = technician_orders.id (TO‘G‘RI)
     """
     req_id = int(str(request_id).split("_")[0]) if isinstance(request_id, str) else int(request_id)
@@ -568,12 +570,12 @@ async def assign_to_operator_for_tech(request_id: int | str, operator_id: int, a
                 FROM users
                 WHERE id = $1
                   AND COALESCE(is_blocked,FALSE) = FALSE
-                  AND role::text = 'callcenter_operator'
+                  AND role::text = 'callcenter_supervisor'
                 """,
-                operator_id,
+                supervisor_id,
             )
             if not ok:
-                raise ValueError("Operator not found or blocked")
+                raise ValueError("Supervisor not found or blocked")
 
             row_old = await conn.fetchrow(
                 "SELECT status FROM technician_orders WHERE id=$1 FOR UPDATE",
@@ -587,7 +589,7 @@ async def assign_to_operator_for_tech(request_id: int | str, operator_id: int, a
             await conn.execute(
                 """
                 UPDATE technician_orders
-                   SET status = 'in_call_center_operator'::technician_order_status,
+                   SET status = 'in_call_center_supervisor'::technician_order_status,
                        updated_at = NOW()
                  WHERE id = $1
                 """,
@@ -606,9 +608,9 @@ async def assign_to_operator_for_tech(request_id: int | str, operator_id: int, a
                     created_at,
                     updated_at
                 )
-                VALUES ($1,$2,$3,$4,'in_call_center_operator',NOW(),NOW())
+                VALUES ($1,$2,$3,$4,'in_call_center_supervisor',NOW(),NOW())
                 """,
-                req_id, actor_id, operator_id, old_status,
+                req_id, actor_id, supervisor_id, old_status,
             )
     finally:
         await conn.close()

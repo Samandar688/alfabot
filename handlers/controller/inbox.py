@@ -4,11 +4,12 @@ from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
 from datetime import datetime
 import html
+from aiogram import Bot
 
 from database.controller_inbox import (
     get_user_by_telegram_id,
     get_users_by_role,
-    get_callcenter_operators,          # ✅ YANGI: aniq operatorlar uchun (qulay)
+    get_callcenter_supervisors,          # ✅ YANGI: aniq operatorlar uchun (qulay)
     fetch_controller_inbox,
     assign_to_technician,
     fetch_controller_inbox_tech,
@@ -16,7 +17,7 @@ from database.controller_inbox import (
     get_technicians_with_load_via_history,
     fetch_controller_inbox_staff,
     assign_to_technician_for_staff,
-    assign_to_operator_for_tech,
+    assign_to_supervisor_for_tech,
 )
 from filters.role_filter import RoleFilter
 
@@ -64,6 +65,7 @@ T = {
     "creator": {"uz": "👷‍♂️ <b>Xodim:</b>", "ru": "👷‍♂️ <b>Сотрудник:</b>"},
     "creator_role": {"uz": "roli", "ru": "роль"},
     "desc": {"uz": "📝 <b>Izoh:</b>", "ru": "📝 <b>Описание:</b>"},
+    "media": {"uz": "📎 <b>Fayllar:</b>", "ru": "📎 <b>Файлы:</b>"},
 }
 
 def normalize_lang(v: str | None) -> str:
@@ -106,7 +108,7 @@ def short_view_text(item: dict, idx: int | None, total: int | None, lang: str) -
     else:
         created_dt = datetime.now()
 
-    tariff = esc(item.get("tariff", "-"))
+    tariff = item.get("tariff")
     client_name = esc(item.get("client_name", "-"))
     client_phone = esc(item.get("client_phone", "-"))
     address = esc(item.get("address", "-"))
@@ -115,7 +117,6 @@ def short_view_text(item: dict, idx: int | None, total: int | None, lang: str) -
     base = (
         f"{t(lang,'title')}\n"
         f"{t(lang,'id')} {short_id_safe}\n"
-        f"{t(lang,'tariff')} {tariff}\n"
         f"{t(lang,'client')} {client_name} ({client_phone})\n"
         f"{t(lang,'address')} {address}\n"
         f"{t(lang,'created')} {fmt_dt(created_dt)}"
@@ -126,7 +127,13 @@ def short_view_text(item: dict, idx: int | None, total: int | None, lang: str) -
     staff_phone = item.get("staff_phone")
     staff_role = item.get("staff_role")
     desc = item.get("description")
+    # media = item.get("media")
 
+
+    # if media:  # 🔹 media bo‘sh bo‘lmasa chiqadi
+    #     base += f"\n{t(lang,'media')} {esc(media)}"
+    if tariff:
+        base += f"\n{t(lang,'tariff')} {esc(tariff)}"
     if req_type:
         base += f"\n{t(lang,'req_type')} {esc(req_type)}"
     if staff_name or staff_phone:
@@ -141,6 +148,26 @@ def short_view_text(item: dict, idx: int | None, total: int | None, lang: str) -
     if idx is not None and total is not None and total > 0:
         base += "\n\n" + t(lang, "order_idx", i=idx + 1, n=total)
     return base
+
+async def send_order(bot: Bot, chat_id: int, item: dict, idx: int, total: int, lang: str):
+    caption = short_view_text(item, idx, total, lang)  # tayyor matn
+    media = item.get("media")
+
+    if media:
+        try:
+            # Avval rasm sifatida yuborib ko‘ramiz
+            await bot.send_photo(chat_id, photo=media, caption=caption, parse_mode="HTML")
+        except Exception:
+            try:
+                # Agar rasm bo‘lmasa, videoga urinib ko‘ramiz
+                await bot.send_video(chat_id, video=media, caption=caption, parse_mode="HTML")
+            except Exception:
+                # Media yuborilmadi – oddiy text bilan ko‘rsatamiz
+                await bot.send_message(chat_id, caption + "\n📎 Faylni ochib bo‘lmadi", parse_mode="HTML")
+    else:
+        # media yo‘q bo‘lsa – faqat text
+        await bot.send_message(chat_id, caption, parse_mode="HTML")
+
 
 async def build_assign_keyboard(full_id: str, lang: str, mode: str) -> InlineKeyboardMarkup:
     rows = []
@@ -159,7 +186,7 @@ async def build_assign_keyboard(full_id: str, lang: str, mode: str) -> InlineKey
         rows.append([InlineKeyboardButton(text=t(lang, "btn_op_section"), callback_data="noop")])
 
         # ✅ aniq funksiya orqali olayapmiz (ENUM cast muammosi yo‘q)
-        operators = await get_callcenter_operators()
+        operators = await get_callcenter_supervisors()
         if operators:
             for op in operators:
                 rows.append([InlineKeyboardButton(
@@ -222,25 +249,118 @@ async def cat_connection_flow(cb: CallbackQuery, state: FSMContext):
     except TelegramBadRequest:
         pass
 
+# @router.callback_query(F.data == "ctrl_inbox_cat_tech")
+# async def cat_tech_flow(cb: CallbackQuery, state: FSMContext):
+#     await cb.answer()
+#     data = await state.get_data()
+#     lang = normalize_lang(data.get("lang"))
+#     items = await fetch_controller_inbox_tech(limit=50, offset=0)
+#     if not items:
+#         try:
+#             await cb.message.edit_text(t(lang, "empty_tech"), reply_markup=category_keyboard(lang))
+#         except TelegramBadRequest:
+#             pass
+#         return
+#     await state.update_data(mode="technician", inbox=items, idx=0)
+#     text = short_view_text(items[0], idx=0, total=len(items), lang=lang)
+#     kb = nav_keyboard(0, len(items), str(items[0]["id"]), lang)
+#     try:
+#         await cb.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+#     except TelegramBadRequest:
+#         pass
+
 @router.callback_query(F.data == "ctrl_inbox_cat_tech")
 async def cat_tech_flow(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
     data = await state.get_data()
     lang = normalize_lang(data.get("lang"))
     items = await fetch_controller_inbox_tech(limit=50, offset=0)
+
     if not items:
         try:
-            await cb.message.edit_text(t(lang, "empty_tech"), reply_markup=category_keyboard(lang))
+            await cb.message.edit_text(
+                t(lang, "empty_tech"),
+                reply_markup=category_keyboard(lang)
+            )
         except TelegramBadRequest:
             pass
         return
+
     await state.update_data(mode="technician", inbox=items, idx=0)
-    text = short_view_text(items[0], idx=0, total=len(items), lang=lang)
+
     kb = nav_keyboard(0, len(items), str(items[0]["id"]), lang)
+
+    # Avval eski xabarni o‘chirib yuboramiz
     try:
-        await cb.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+        await cb.message.delete()
     except TelegramBadRequest:
         pass
+
+    # Media + caption bilan yuboramiz
+    await send_order(
+        bot=cb.bot,
+        chat_id=cb.from_user.id,
+        item=items[0],
+        idx=0,
+        total=len(items),
+        lang=lang
+    )
+
+    # Tugmalarni alohida chiqaramiz
+    await cb.message.answer(
+        t(lang, "choose_action"),
+        reply_markup=kb
+    )
+
+@router.callback_query(F.data.startswith("ctrl_inbox_prev_") | F.data.startswith("ctrl_inbox_next_"))
+async def inbox_nav_handler(cb: CallbackQuery, state: FSMContext):
+    await cb.answer()
+    data = await state.get_data()
+    lang = normalize_lang(data.get("lang"))
+    items = data.get("inbox", [])
+    idx = data.get("idx", 0)
+
+    if not items:
+        await cb.message.answer(t(lang, "empty_tech"), reply_markup=category_keyboard(lang))
+        return
+
+    # Callbackdan indexni olish
+    if cb.data.startswith("ctrl_inbox_prev_"):
+        new_idx = int(cb.data.replace("ctrl_inbox_prev_", "")) - 1
+    else:  # next
+        new_idx = int(cb.data.replace("ctrl_inbox_next_", "")) + 1
+
+    if new_idx < 0 or new_idx >= len(items):
+        return  # noto‘g‘ri index
+
+    # Yangilangan indexni state'ga yozamiz
+    await state.update_data(idx=new_idx)
+
+    item = items[new_idx]
+    kb = nav_keyboard(new_idx, len(items), str(item["id"]), lang)
+
+    # Eski xabarni o‘chirib tashlaymiz
+    try:
+        await cb.message.delete()
+    except TelegramBadRequest:
+        pass
+
+    # Yangi media + caption yuboramiz
+    await send_order(
+        bot=cb.bot,
+        chat_id=cb.from_user.id,
+        item=item,
+        idx=new_idx,
+        total=len(items),
+        lang=lang
+    )
+
+    # Tugmalarni ham alohida chiqaramiz
+    await cb.message.answer(
+        t(lang, "choose_action"),
+        reply_markup=kb
+    )
+
 
 @router.callback_query(F.data == "ctrl_inbox_cat_staff")
 async def cat_staff_flow(cb: CallbackQuery, state: FSMContext):
@@ -403,15 +523,15 @@ async def assign_pick_operator(cb: CallbackQuery, state: FSMContext):
         return
 
     # aniq operatorlar
-    operators = await get_callcenter_operators()
+    operators = await get_callcenter_supervisors()
     selected_op = next((op for op in operators if op.get("id") == operator_id), None)
     if not selected_op:
-        await cb.answer("❌ Operator topilmadi", show_alert=True)
+        await cb.answer("❌ callcenter_supervisor topilmadi", show_alert=True)
         return
 
     try:
         request_id = int(full_id.split("_")[0]) if "_" in full_id else int(full_id)
-        await assign_to_operator_for_tech(request_id=request_id, operator_id=operator_id, actor_id=user["id"])
+        await assign_to_supervisor_for_tech(request_id=request_id, supervisor_id=operator_id, actor_id=user["id"])
     except Exception as e:
         await cb.answer(f"{t(lang,'error_generic')} {str(e)}", show_alert=True)
         return
