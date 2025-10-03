@@ -388,50 +388,49 @@ async def upsert_material_selection(
     applications_id: int,
     material_id: int,
     qty: int,
+    request_type: str = "connection",   # 'connection' | 'technician' | 'saff'
 ) -> None:
-    """
-    Tanlangan miqdorni to'g'ridan-to'g'ri o'rnatadi (jamlamaydi).
-    material_requests da UNIQUE (user_id, applications_id, material_id) tavsiya etiladi.
-    """
     if qty <= 0:
         raise ValueError("Miqdor 0 dan katta bo‘lishi kerak")
 
     conn = await _conn()
     try:
         async with conn.transaction():
-            price = await conn.fetchval(
-                "SELECT COALESCE(price, 0) FROM materials WHERE id=$1",
-                material_id
-            ) or 0
+            price = await conn.fetchval("SELECT COALESCE(price, 0) FROM materials WHERE id=$1", material_id) or 0
             total = price * qty
+
+            # FK larni tayyorlash
+            conn_oid  = applications_id if request_type == "connection"  else None
+            tech_oid  = applications_id if request_type == "technician" else None
+            saff_oid  = applications_id if request_type == "saff"       else None
 
             has_updated_at = await _has_column(conn, "material_requests", "updated_at")
 
-            if has_updated_at:
-                sql = """
-                    INSERT INTO material_requests (user_id, applications_id, material_id, quantity, price, total_price)
-                    VALUES ($1, $2, $3, $4, $5, $6)
-                    ON CONFLICT (user_id, applications_id, material_id)
-                    DO UPDATE SET
-                        quantity    = EXCLUDED.quantity,
-                        price       = EXCLUDED.price,
-                        total_price = EXCLUDED.total_price,
-                        updated_at  = NOW()
-                """
-            else:
-                sql = """
-                    INSERT INTO material_requests (user_id, applications_id, material_id, quantity, price, total_price)
-                    VALUES ($1, $2, $3, $4, $5, $6)
-                    ON CONFLICT (user_id, applications_id, material_id)
-                    DO UPDATE SET
-                        quantity    = EXCLUDED.quantity,
-                        price       = EXCLUDED.price,
-                        total_price = EXCLUDED.total_price
-                """
-
-            await conn.execute(sql, user_id, applications_id, material_id, qty, price, total)
+            sql = f"""
+                INSERT INTO material_requests (
+                    user_id, applications_id, material_id,
+                    quantity, price, total_price,
+                    connection_order_id, technician_order_id, saff_order_id
+                    {", updated_at" if has_updated_at else ""}
+                )
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9 {", NOW()" if has_updated_at else ""})
+                ON CONFLICT (user_id, applications_id, material_id)
+                DO UPDATE SET
+                    quantity           = EXCLUDED.quantity,
+                    price              = EXCLUDED.price,
+                    total_price        = EXCLUDED.total_price,
+                    connection_order_id= COALESCE(material_requests.connection_order_id, EXCLUDED.connection_order_id),
+                    technician_order_id= COALESCE(material_requests.technician_order_id, EXCLUDED.technician_order_id),
+                    saff_order_id      = COALESCE(material_requests.saff_order_id, EXCLUDED.saff_order_id)
+                    {", updated_at = NOW()" if has_updated_at else ""}
+            """
+            await conn.execute(
+                sql, user_id, applications_id, material_id, qty, price, total,
+                conn_oid, tech_oid, saff_oid
+            )
     finally:
         await conn.close()
+
 
 
 # async def upsert_material_selection(
@@ -544,13 +543,8 @@ async def send_selection_to_warehouse(
     applications_id: int,
     technician_user_id: Optional[int] = None, *,
     technician_id: Optional[int] = None,
-    request_type: str = "connection",  # 'connection' | 'technician' | 'saff'
+    request_type: str = "connection",
 ) -> bool:
-    """
-    Tanlangan materiallarni omborga jo‘natish.
-    - material_requests ga QAYTA insert qilinmaydi (dublikatning ildizi shu edi).
-    - faqat statusni 'in_warehouse' ga o‘tkazamiz va connections ga tarix yozamiz (to‘g‘ri id-ustun bilan).
-    """
     uid = technician_user_id if technician_user_id is not None else technician_id
     if uid is None:
         raise TypeError("send_selection_to_warehouse(): technician_user_id yoki technician_id bering")
@@ -558,35 +552,31 @@ async def send_selection_to_warehouse(
     conn = await _conn()
     try:
         async with conn.transaction():
-            # 1) status -> in_warehouse
+            # 0) Joriy statusni o‘qib olaylik
             if request_type == "technician":
-                await conn.execute(
-                    "UPDATE technician_orders SET status='in_warehouse', updated_at=NOW() WHERE id=$1",
-                    applications_id
-                )
+                cur_status = await conn.fetchval("SELECT status FROM technician_orders WHERE id=$1 FOR UPDATE", applications_id)
+                await conn.execute("UPDATE technician_orders SET status='in_warehouse', updated_at=NOW() WHERE id=$1", applications_id)
             elif request_type == "saff":
-                await conn.execute(
-                    "UPDATE saff_orders SET status='in_warehouse', updated_at=NOW() WHERE id=$1",
-                    applications_id
-                )
+                cur_status = await conn.fetchval("SELECT status FROM saff_orders WHERE id=$1 FOR UPDATE", applications_id)
+                await conn.execute("UPDATE saff_orders SET status='in_warehouse', updated_at=NOW() WHERE id=$1", applications_id)
             else:
-                await conn.execute(
-                    """
+                cur_status = await conn.fetchval("SELECT status::text FROM connection_orders WHERE id=$1 FOR UPDATE", applications_id)
+                await conn.execute("""
                     UPDATE connection_orders
                        SET status='in_warehouse'::connection_order_status,
                            updated_at=NOW()
                      WHERE id=$1
-                    """,
-                    applications_id
-                )
+                """, applications_id)
 
-            # 2) connections ga tarix yozish: recipient — omborchi
+            # 1) Omborchi tanlash (round-robin)
             warehouse_id = await pick_warehouse_user_rr(applications_id)
-            if warehouse_id is not None:
-                conn_id  = applications_id if request_type == "connection"  else None
-                tech_oid = applications_id if request_type == "technician" else None
-                saff_oid = applications_id if request_type == "saff"       else None
 
+            # 2) connections ga tarix yozish
+            conn_id  = applications_id if request_type == "connection"  else None
+            tech_oid = applications_id if request_type == "technician" else None
+            saff_oid = applications_id if request_type == "saff"       else None
+
+            if warehouse_id is not None:
                 await conn.execute(
                     """
                     INSERT INTO connections(
@@ -595,16 +585,14 @@ async def send_selection_to_warehouse(
                         sender_status, recipient_status,
                         created_at, updated_at
                     )
-                    VALUES ($1, $2, $3, $4, $5,
-                            'in_technician_work', 'in_warehouse',
-                            NOW(), NOW())
+                    VALUES ($1,$2,$3,$4,$5, $6,'in_warehouse', NOW(), NOW())
                     """,
-                    uid, warehouse_id, conn_id, tech_oid, saff_oid
+                    uid, warehouse_id, conn_id, tech_oid, saff_oid, cur_status or 'in_technician_work'
                 )
-
             return True
     finally:
         await conn.close()
+
 
 
 # Eski nom bilan chaqirilsa ham yangi mantiqqa yo‘naltirish

@@ -20,10 +20,12 @@ from database.technician_queries import (
     finish_technician_work,
     fetch_selected_materials_for_request,
     fetch_technician_materials,                         # NEW
-    create_material_request_and_mark_in_warehouse,  # NEW
+    create_material_request_and_mark_in_warehouse,
+    upsert_material_selection,
+    send_selection_to_warehouse,  # NEW
 
     # Material oqimi (ikkala rejimda ham ishlatiladi)
-    fetch_technician_materials,
+    fetch_all_materials,
     fetch_material_by_id,
     fetch_assigned_qty,
     upsert_material_request_and_decrease_stock,
@@ -154,6 +156,8 @@ T = {
         "uz": ["🔌 Ulanish arizalari", "🔧 Texnik xizmat arizalari", "📞 Operator arizalari"],
         "ru": ["🔌 Заявки на подключение", "🔧 Заявки на техобслуживание", "📞 Заявки от операторов"],
     },
+    "send_to_wh": {"uz": "📨 Omborga so‘rov yuborish", "ru": "📨 Отправить на склад"},
+
 }
 
 def t(key: str, lang: str = "uz", **kwargs) -> str:
@@ -452,11 +456,14 @@ async def tech_accept(cb: CallbackQuery, state: FSMContext):
         return await cb.answer(t("no_perm", lang), show_alert=True)
 
     req_id = int(cb.data.replace("tech_accept_", ""))
+
     try:
         if mode == "technician":
             ok = await accept_technician_work_for_tech(applications_id=req_id, technician_id=user["id"])
+        elif mode == "saff":
+            ok = await accept_technician_work_for_saff(applications_id=req_id, technician_id=user["id"])
         else:
-            ok = await accept_technician_work(applications_id=req_id, technician_id=user["id"])
+            ok = await accept_technician_work(applications_id=req_id, technician_id=user["id"])  # connection
         if not ok:
             return await cb.answer(t("status_mismatch", lang), show_alert=True)
     except Exception as e:
@@ -519,12 +526,16 @@ async def tech_start(cb: CallbackQuery, state: FSMContext):
     user = await find_user_by_telegram_id(cb.from_user.id)
     if not user or user.get("role") != "technician":
         return await cb.answer(t("no_perm", lang), show_alert=True)
+
     req_id = int(cb.data.replace("tech_start_", ""))
+
     try:
         if mode == "technician":
             ok = await start_technician_work_for_tech(applications_id=req_id, technician_id=user["id"])
+        elif mode == "saff":
+            ok = await start_technician_work_for_saff(applications_id=req_id, technician_id=user["id"])
         else:
-            ok = await start_technician_work(applications_id=req_id, technician_id=user["id"])
+            ok = await start_technician_work(applications_id=req_id, technician_id=user["id"])  # connection
         if not ok:
             return await cb.answer(t("status_mismatch_detail", lang), show_alert=True)
     except Exception as e:
@@ -548,16 +559,15 @@ async def tech_start(cb: CallbackQuery, state: FSMContext):
         diag_kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=t("diagnostics", lang), callback_data=f"tech_diag_begin_{req_id}")]
         ])
-        await cb.message.answer(
-            t("ok_started", lang) + "\n\n" + t("diag_begin_prompt", lang),
-            reply_markup=diag_kb
-        )
+        await cb.message.answer(t("ok_started", lang) + "\n\n" + t("diag_begin_prompt", lang), reply_markup=diag_kb)
         await cb.answer(t("ok_started", lang))
         return
 
+    # connection/saff uchun ombor tanlash ekrani (agar kerak bo‘lsa)
     mats = await fetch_technician_materials(user_id=user["id"])
     header_text = t("store_header", lang, id=req_id)
     await cb.message.answer(header_text, reply_markup=materials_keyboard(mats, applications_id=req_id, lang=lang), parse_mode="HTML")
+
 
 # ====== DIAGNOSTIKA ======
 @router.callback_query(F.data.startswith("tech_diag_begin_"))
@@ -742,7 +752,8 @@ async def tech_qty_entered(msg: Message, state: FSMContext):
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=t("add_more", lang), callback_data=f"tech_add_more_{req_id}")],
-        [InlineKeyboardButton(text=t("final_view", lang), callback_data=f"tech_review_{req_id}")]
+        [InlineKeyboardButton(text=t("final_view", lang), callback_data=f"tech_review_{req_id}")],
+        [InlineKeyboardButton(text=t("send_to_wh", lang), callback_data=f"tech_send_wh_{req_id}")]
     ])
     await msg.answer("\n".join(lines), reply_markup=kb, parse_mode="HTML")
     await _preserve_mode_clear(state)
@@ -844,7 +855,9 @@ async def tech_review(cb: CallbackQuery, state: FSMContext):
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=t("finish", lang), callback_data=f"tech_finish_{req_id}")],
-        [InlineKeyboardButton(text=t("back", lang), callback_data=f"tech_back_to_materials_{req_id}")]
+        [InlineKeyboardButton(text=t("back", lang), callback_data=f"tech_back_to_materials_{req_id}")],
+        [InlineKeyboardButton(text=t("send_to_wh", lang), callback_data=f"tech_send_wh_{req_id}")]
+
     ])
     await cb.message.answer("\n".join(lines), reply_markup=kb, parse_mode="HTML")
     await cb.answer()
@@ -857,7 +870,9 @@ async def tech_mat_custom(cb: CallbackQuery, state: FSMContext):
         req_id = int(cb.data.replace("tech_mat_custom_", ""))
     except Exception:
         return
-    mats = await fetch_technician_materials(limit=200, offset=0)
+    # OLDI: mats = await fetch_technician_materials(limit=200, offset=0)  # ❌ noto‘g‘ri
+    mats = await fetch_all_materials(limit=200, offset=0)  # ✅ to‘g‘ri: materials dan umumiy katalog
+
     if not mats:
         return await cb.message.answer(T["catalog_empty"][lang])
 
@@ -869,6 +884,11 @@ async def tech_mat_custom(cb: CallbackQuery, state: FSMContext):
             text=title[:64],
             callback_data=f"tech_custom_select_{m.get('material_id')}_{req_id}"
         )])
+
+    rows.append([InlineKeyboardButton(text=T["back"][lang], callback_data=f"tech_back_to_materials_{req_id}")])
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
+    await cb.message.answer(T["catalog_header"][lang], reply_markup=kb, parse_mode="HTML")
+
 
     rows.append([InlineKeyboardButton(text=T["back"][lang], callback_data=f"tech_back_to_materials_{req_id}")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
@@ -935,37 +955,65 @@ async def custom_qty_entered(msg: Message, state: FSMContext):
     mode = st.get("tech_mode", "connection")
     request_type = "technician" if mode == "technician" else ("saff" if mode == "saff" else "connection")
 
+    # 1) Tanlovni material_requests ga saqlaymiz (upsert)
     try:
-        ok = await create_material_request_and_mark_in_warehouse(
+        await upsert_material_selection(
+            user_id=user["id"],
             applications_id=req_id,
-            technician_id=user["id"],
             material_id=material_id,
             qty=qty,
-            request_type=request_type,
+            request_type=request_type,  # FK larni to‘ldiradi
         )
-        if not ok:
-            return await msg.answer(t("status_mismatch", lang))
     except Exception as e:
         return await msg.answer(f"{t('x_error', lang)} {e}")
 
-    data2 = await state.get_data()
-    items = _dedup_by_id(data2.get("tech_inbox", []))
-    if items:
-        try:
-            for it in items:
-                if it.get("id") == req_id:
-                    it["status"] = "in_warehouse"
-                    break
-            await state.update_data(tech_inbox=items)
-        except Exception:
-            pass
+    # 2) Yig‘ilgan tanlovni ko‘rsatamiz + uchta tugma
+    selected = await fetch_selected_materials_for_request(user["id"], req_id)
+    lines = [t("saved_selection", lang) + "\n", f"{t('order_id', lang)} {req_id}", t("selected_products", lang)]
+    for it in selected:
+        qty_txt = f"{_qty_of(it)} {'dona' if lang=='uz' else 'шт'}"
+        price_txt = f"{_fmt_price_uzs(it['price'])} {'so\'m' if lang=='uz' else 'сум'}"
+        lines.append(f"• {esc(it['name'])} — {qty_txt} (💰 {price_txt})")
 
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t("add_more", lang), callback_data=f"tech_add_more_{req_id}")],
+        [InlineKeyboardButton(text=t("final_view", lang), callback_data=f"tech_review_{req_id}")],
+        [InlineKeyboardButton(text=t("send_to_wh", lang), callback_data=f"tech_send_wh_{req_id}")]
+    ])
+    await msg.answer("\n".join(lines), reply_markup=kb, parse_mode="HTML")
     await _preserve_mode_clear(state)
-    await msg.answer(
-        f"{t('store_request_sent', lang)}\n"
-        f"{t('order', lang)} {req_id}\n"
-        f"📦 ID: {material_id}\n"
-        f"🔢 {qty}\n"
-        f"{t('req_type_info', lang)}",
+
+
+
+@router.callback_query(F.data.startswith("tech_send_wh_"))
+async def tech_send_wh(cb: CallbackQuery, state: FSMContext):
+    st   = await state.get_data()
+    lang = st.get("lang") or await resolve_lang(cb.from_user.id)
+    try:
+        req_id = int(cb.data.replace("tech_send_wh_", ""))
+    except Exception:
+        return await cb.answer(t("format_err", lang), show_alert=True)
+
+    user = await find_user_by_telegram_id(cb.from_user.id)
+    if not user or user.get("role") != "technician":
+        return await cb.answer(t("no_perm", lang), show_alert=True)
+
+    mode = st.get("tech_mode", "connection")
+    request_type = "technician" if mode == "technician" else ("saff" if mode == "saff" else "connection")
+
+    try:
+        ok = await send_selection_to_warehouse(
+            applications_id=req_id,
+            technician_id=user["id"],
+            request_type=request_type
+        )
+        if not ok:
+            return await cb.answer(t("status_mismatch", lang), show_alert=True)
+    except Exception as e:
+        return await cb.answer(f"{t('x_error', lang)} {e}", show_alert=True)
+
+    await cb.message.answer(
+        t("store_request_sent", lang) + "\n" + t("req_type_info", lang),
         parse_mode="HTML"
     )
+    await cb.answer()
